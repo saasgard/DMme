@@ -1,5 +1,5 @@
 # Builds the addon zip and uploads it to CurseForge + GitHub Releases
-# whenever a version tag is pushed, e.g.:  git tag v2.3.0 && git push --tags
+# whenever a version tag is pushed, e.g.:  git tag v1.0.0 && git push --tags
 #
 # Needs one repository secret: CF_API_KEY (a CurseForge API token).
 name: Package and release
