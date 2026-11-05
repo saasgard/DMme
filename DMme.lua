@@ -1,4 +1,6 @@
--- DMme: whispers in popup windows + guild invite helpers
+-- DMme: every whisper (and Battle.net whisper) in its own window or tab,
+-- with class colours, /who profiles, a minimap session list, optional
+-- history and a settings panel. Works on Retail and Forever.
 local ADDON = ...
 
 local defaults = {
@@ -1983,7 +1985,13 @@ local function AddLine(key, text, incoming, guid)
     for _ = 1, #lines - SESSION_LINES do table.remove(lines, 1) end
     LogEntry(key, entry)
     if DB.logEnabled and hist and hist:IsShown() then hist:Refresh() end
-    if not f then UpdateSessionUI(); return end
+    if not f then
+        -- no window (auto-open is off): still count it as unread so the
+        -- minimap badge/list show it; the window picks this up when opened
+        if incoming then s.unread = (s.unread or 0) + 1 end
+        UpdateSessionUI()
+        return
+    end
 
     local wasAtBottom = f.msg:AtBottom()
     f.msg:AddMessage(FormatEntry(key, entry))
@@ -2303,15 +2311,29 @@ end
 ----------------------------------------------------------------------
 -- Shift-click item links into a focused DMme edit box
 ----------------------------------------------------------------------
-if ChatEdit_InsertLink then
-    hooksecurefunc("ChatEdit_InsertLink", function(link)
+do
+    -- Retail moved ChatEdit_InsertLink to ChatFrameUtil.InsertLink; hook
+    -- whichever exist, and ignore the same link twice in one frame in case
+    -- one calls the other.
+    local lastLink, lastTime
+    local function InsertIntoDMme(link)
+        if type(link) ~= "string" then return end
+        local now = GetTime()
+        if link == lastLink and now == lastTime then return end
         for _, f in pairs(windows) do
             if f:IsShown() and f.edit:HasFocus() then
+                lastLink, lastTime = link, now
                 f.edit:Insert(link)
                 return
             end
         end
-    end)
+    end
+    if ChatEdit_InsertLink then
+        hooksecurefunc("ChatEdit_InsertLink", InsertIntoDMme)
+    end
+    if ChatFrameUtil and ChatFrameUtil.InsertLink then
+        hooksecurefunc(ChatFrameUtil, "InsertLink", InsertIntoDMme)
+    end
 end
 
 ----------------------------------------------------------------------
@@ -2501,7 +2523,6 @@ local function CreateSessionPanel()
             r.key = key
             if key then
                 local s = session[key]
-                local f = windows[key]
                 local classFile = KeyInfo(key)
                 local cr, cg, cb = KeyRGB(key)
                 r.name:SetText(Colorize(ShortName(key), cr, cg, cb))
@@ -3153,11 +3174,10 @@ SlashCmdList.DMME = function(input)
             local key = FullName(rest)
             DB.log[key] = nil
             Print("Deleted saved log for " .. rest .. ".")
+            AfterHistoryChanged()
         else
-            wipe(DB.log)
-            Print("Deleted all saved whisper logs.")
+            StaticPopup_Show("DMME_CLEAR_HISTORY") -- asks before deleting everything
         end
-        if hist and hist:IsShown() then hist:Refresh() end
     elseif cmd == "reset" then
         wipe(DB.positions)
         DB.tabPos = nil
