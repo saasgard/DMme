@@ -42,7 +42,7 @@ local windowCount = 0
 local playerName = UnitName("player")
 -- forward declarations (defined further down)
 local ShowHistory, ShowSettings, ActivateTab, CloseTab, RefreshTabs, UpdateSessionUI
-local CreateMinimapButton, OpenWindow
+local CreateMinimapButton, OpenWindow, StoreProfile
 
 -- Conversations from this session: [key] = { t, text, incoming, lines = { entries }, unread }
 -- Saved in DMmeDB.session so it survives /reload; wiped on a fresh login.
@@ -328,7 +328,26 @@ local function PartyInviteName(name)
     end
 end
 
+-- Battle.net friends: the friends list already knows their character's
+-- level, race, class and zone (works across realms and factions, unlike /who).
+local function BNWho(key)
+    local info = BNInfo(BNResolve(key))
+    local g = info and info.gameAccountInfo
+    if not (g and g.characterName and g.characterName ~= "") then
+        Print(ShortName(key) .. " isn't playing a WoW character right now.")
+        return
+    end
+    StoreProfile(key, {
+        level = (g.characterLevel and g.characterLevel > 0) and g.characterLevel or nil,
+        race = g.raceName ~= "" and g.raceName or nil,
+        class = g.className ~= "" and g.className or nil,
+        zone = g.areaName ~= "" and g.areaName or nil,
+        character = g.characterName,
+    })
+end
+
 local function WhoName(name)
+    if IsBN(name) then BNWho(name); return end
     name = ResolveTarget(name)
     if not name then return end
     whoPending[FullName(name)] = time()
@@ -738,7 +757,8 @@ local function UpdateTitle(f)
         if not info or (ga and ga.isOnline == false) then
             sub = sub .. "  (offline)"
         elseif ga and ga.characterName and ga.characterName ~= "" then
-            sub = sub .. "  -  " .. Colorize(ga.characterName, r, g, b) .. (locClass and (" " .. locClass) or "")
+            local lvl = (p and p.level and p.character == ga.characterName) and (" " .. p.level) or ""
+            sub = sub .. "  -  " .. Colorize(ga.characterName, r, g, b) .. lvl .. (locClass and (" " .. locClass) or "")
         end
     end
     if f.unread > 0 and f.minimized then
@@ -1917,7 +1937,7 @@ end
 ----------------------------------------------------------------------
 -- /who results -> player profile (level, race, class, guild, zone)
 ----------------------------------------------------------------------
-local function StoreProfile(name, data)
+StoreProfile = function(name, data)
     if IsSecret(name) or AnySecret(data.level, data.race, data.class, data.guild, data.zone) then return end
     local key = FullName(name)
     if not key or not DB then return end
@@ -2000,6 +2020,8 @@ events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_LOGOUT")
 events:RegisterEvent("WHO_LIST_UPDATE")
+events:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+events:RegisterEvent("ADDON_ACTION_BLOCKED")
 events:RegisterEvent("CHAT_MSG_SYSTEM")
 events:RegisterEvent("CHAT_MSG_WHISPER")
 events:RegisterEvent("CHAT_MSG_WHISPER_INFORM")
@@ -2048,6 +2070,15 @@ events:SetScript("OnEvent", function(self, event, ...)
             for key, f in pairs(windows) do
                 if session[key] then session[key].unread = (f.unread or 0) > 0 and f.unread or nil end
             end
+        end
+        return
+    elseif event == "ADDON_ACTION_FORBIDDEN" or event == "ADDON_ACTION_BLOCKED" then
+        -- the game blocked something DMme (or code it touched) tried to do:
+        -- say exactly what, so it can be reported and fixed
+        local addon, func = ...
+        if addon == ADDON then
+            Print("|cffff5555The game blocked|r " .. tostring(func) ..
+                " |cff9a9aa8(" .. event .. ")|r - please report this line.")
         end
         return
     elseif event == "WHO_LIST_UPDATE" then
