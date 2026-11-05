@@ -7,6 +7,7 @@ local defaults = {
     autoOpen = true,      -- open a window automatically on incoming whispers
     logEnabled = false,   -- OPT-IN: save whispers to disk (SavedVariables)
     logMax = 2000,        -- max saved messages per contact
+    logKeep = "forever",  -- how long history is kept: day / week / month / year / forever
     hintShown = false,
     scale = 1,
     width = 380,
@@ -469,6 +470,52 @@ local function LogEntry(key, entry)
     log.last = entry.t
     local over = #e - (DB.logMax or 2000)
     for _ = 1, over do table.remove(e, 1) end
+end
+
+-- How long saved history is kept (Settings > History > "Keep history for")
+local KEEP_OPTIONS = {
+    { id = "day",     label = "1 day",   secs = 86400 },
+    { id = "week",    label = "1 week",  secs = 7 * 86400 },
+    { id = "month",   label = "1 month", secs = 30 * 86400 },
+    { id = "year",    label = "1 year",  secs = 365 * 86400 },
+    { id = "forever", label = "Forever", secs = nil },
+}
+
+local function KeepOption(id)
+    for _, o in ipairs(KEEP_OPTIONS) do if o.id == id then return o end end
+    return KEEP_OPTIONS[#KEEP_OPTIONS]
+end
+
+-- Number of saved messages older than the given keep option.
+local function CountExpired(id)
+    local secs = KeepOption(id).secs
+    if not secs then return 0 end
+    local cutoff, n = time() - secs, 0
+    for _, log in pairs(DB.log) do
+        for _, e in ipairs(log.entries) do
+            if e.t < cutoff then n = n + 1 else break end -- entries are oldest first
+        end
+    end
+    return n
+end
+
+-- Delete saved messages older than the current keep setting.
+local function PruneHistory()
+    local secs = KeepOption(DB.logKeep).secs
+    if not secs then return 0 end
+    local cutoff, removed = time() - secs, 0
+    for key, log in pairs(DB.log) do
+        local kept = {}
+        for _, e in ipairs(log.entries) do
+            if e.t >= cutoff then kept[#kept + 1] = e else removed = removed + 1 end
+        end
+        if #kept == 0 then
+            DB.log[key] = nil
+        else
+            log.entries = kept
+        end
+    end
+    return removed
 end
 
 -- entry = { t = time(), i = incoming (true/nil), m = text, me = your character }
@@ -2017,6 +2064,7 @@ events:SetScript("OnEvent", function(self, event, ...)
         return
     elseif event == "PLAYER_LOGIN" then
         if DB and not DB.minimap.hide then CreateMinimapButton() end
+        if DB then PruneHistory() end -- drop history older than "Keep history for"
         -- Re-key data saved by older versions as "Name-<own realm>"
         if DB then
             for _, tbl in ipairs({ DB.log, DB.guids, DB.positions }) do
@@ -2610,6 +2658,50 @@ local function ApplyScale(s)
     if DB.tabbed then RefreshTabs() end
 end
 
+-- History retention / clearing ---------------------------------------
+local function AfterHistoryChanged()
+    if hist and hist:IsShown() then hist:Refresh() end
+    RecolorAll() -- redraw windows (they show recent saved lines)
+    if settings and settings:IsShown() then settings:Refresh() end
+end
+
+local function ApplyLogKeep(id)
+    DB.logKeep = KeepOption(id).id
+    local n = PruneHistory()
+    if n > 0 then Print("Deleted " .. n .. " saved messages older than " .. KeepOption(id).label .. ".") end
+    AfterHistoryChanged()
+end
+
+-- Change the keep setting; asks first if that would delete saved messages.
+local function SetLogKeep(id)
+    local n = CountExpired(id)
+    if n > 0 then
+        StaticPopup_Show("DMME_KEEP_HISTORY", n, KeepOption(id).label, id)
+    else
+        ApplyLogKeep(id)
+    end
+end
+
+StaticPopupDialogs["DMME_KEEP_HISTORY"] = {
+    text = "This will delete %s saved messages older than %s.\nContinue?",
+    button1 = YES or "Yes",
+    button2 = NO or "No",
+    OnAccept = function(_, data) ApplyLogKeep(data) end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+}
+
+StaticPopupDialogs["DMME_CLEAR_HISTORY"] = {
+    text = "Delete all saved whisper history?\nThis can't be undone.",
+    button1 = YES or "Yes",
+    button2 = NO or "No",
+    OnAccept = function()
+        wipe(DB.log)
+        AfterHistoryChanged()
+        Print("All saved whisper history deleted.")
+    end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+}
+
 local function RelayoutAllButtons()
     for _, f in pairs(windows) do LayoutButtons(f) end
 end
@@ -2780,9 +2872,66 @@ local function CreateSettings()
     Section("History")
     Check("Save whisper history", "Saves whispers to disk so you can read them later in the History window. Off by default.",
         function() return DB.logEnabled end, SetLogging)
+
+    -- "Keep history for" dropdown
+    local keepLabel = s:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    keepLabel:SetPoint("TOPLEFT", 16, y - 4)
+    keepLabel:SetText("Keep history for")
+    local dd = FlatButton(s, "Forever", { width = 110, tooltip = "Keep history for",
+        tooltipText = "Older saved messages are deleted automatically (checked at login and when you change this)." })
+    dd:SetPoint("TOPRIGHT", -16, y)
+    local arrow = dd:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    arrow:SetPoint("RIGHT", -6, 0)
+    arrow:SetText("v")
+
+    local list = CreateFrame("Frame", nil, s, BACKDROP_TEMPLATE)
+    list:SetPoint("TOPRIGHT", dd, "BOTTOMRIGHT", 0, -2)
+    list:SetSize(110, #KEEP_OPTIONS * 20 + 6)
+    list:SetBackdrop(FLAT)
+    list:SetBackdropColor(0.07, 0.07, 0.09, 0.98)
+    list:SetBackdropBorderColor(unpack(C.border))
+    list:SetFrameStrata("FULLSCREEN_DIALOG")
+    list:EnableMouse(true)
+    list:Hide()
+    list.rows = {}
+    for i, o in ipairs(KEEP_OPTIONS) do
+        local row = CreateFrame("Button", nil, list, BACKDROP_TEMPLATE)
+        row:SetPoint("TOPLEFT", 3, -3 - (i - 1) * 20)
+        row:SetPoint("TOPRIGHT", -3, -3 - (i - 1) * 20)
+        row:SetHeight(20)
+        row:SetBackdrop({ bgFile = WHITE })
+        row:SetBackdropColor(0, 0, 0, 0)
+        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.text:SetPoint("LEFT", 8, 0)
+        row.text:SetText(o.label)
+        row:SetScript("OnEnter", function(self) self:SetBackdropColor(1, 1, 1, 0.08) end)
+        row:SetScript("OnLeave", function(self) self:SetBackdropColor(0, 0, 0, 0) end)
+        row:SetScript("OnClick", function()
+            list:Hide()
+            if o.id ~= DB.logKeep then SetLogKeep(o.id) end
+        end)
+        row.id = o.id
+        list.rows[i] = row
+    end
+    dd:SetScript("OnClick", function()
+        if list:IsShown() then list:Hide(); return end
+        local r, g, b = UIAccent()
+        for _, row in ipairs(list.rows) do
+            if row.id == DB.logKeep then row.text:SetTextColor(r, g, b) else row.text:SetTextColor(1, 1, 1) end
+        end
+        list:Show()
+    end)
+    s:HookScript("OnHide", function() list:Hide() end)
+    y = y - 28
+
+    -- Open History / Clear history
     local open = FlatButton(s, "Open History", { width = 110 })
     open:SetPoint("TOPLEFT", 16, y - 4)
     open:SetScript("OnClick", function() ShowHistory() end)
+    local clear = FlatButton(s, "Clear history", { width = 110, hoverColor = { 0.9, 0.25, 0.25 },
+        tooltip = "Clear history", tooltipText = "Delete all saved whisper history.\n(This session's conversations are kept.)" })
+    clear:SetPoint("LEFT", open, "RIGHT", 6, 0)
+    clear:SetScript("OnClick", function() StaticPopup_Show("DMME_CLEAR_HISTORY") end)
     y = y - 34
 
     s:SetHeight(-y + 6)
@@ -2790,6 +2939,7 @@ local function CreateSettings()
     function s:Refresh()
         for _, c in ipairs(checks) do c.Refresh() end
         showScale()
+        dd.label:SetText(KeepOption(DB.logKeep).label)
     end
     s:SetScript("OnShow", function(self) self:Refresh() end)
     settings = s
@@ -2868,6 +3018,16 @@ SlashCmdList.DMME = function(input)
         else
             Print("Usage: /dm scale <0.5 - 2>  (now " .. (DB.scale or 1) .. ")")
         end
+    elseif cmd == "keep" then
+        local id = rest:lower()
+        local valid = false
+        for _, o in ipairs(KEEP_OPTIONS) do if o.id == id then valid = true end end
+        if valid then
+            SetLogKeep(id)
+            if KeepOption(id).id == DB.logKeep then Print("Keeping history for: " .. KeepOption(id).label) end
+        else
+            Print("Usage: /dm keep day|week|month|year|forever  (now " .. KeepOption(DB.logKeep).label .. ")")
+        end
     elseif cmd == "log" then
         local r = rest:lower()
         if r == "on" then SetLogging(true)
@@ -2908,6 +3068,7 @@ SlashCmdList.DMME = function(input)
         Print("  /dm scale <n> - window scale (now " .. (DB.scale or 1) .. ")")
         Print("  /dm log [on|off] - save whispers to disk (now " .. (DB.logEnabled and "ON" or "OFF") .. ")")
         Print("  /dm history [name] - browse saved whispers")
+        Print("  /dm keep day|week|month|year|forever - how long history is kept")
         Print("  /dm clear [name] - delete saved logs")
         Print("  /dm reset | closeall")
     end

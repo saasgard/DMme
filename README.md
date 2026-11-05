@@ -26,7 +26,7 @@ The minimap button glows and shows how many conversations are waiting for you. C
 Right-click any name in a DMme window for the same player menu you get in normal chat.
 
 **Keep your conversations (optional)**
-Turn on history to save your whispers between sessions. You can browse, search and copy them later in the History window. It's off by default.
+Turn on history to save your whispers between sessions. You can browse, search and copy them later in the History window, and choose how long to keep them: a day, a week, a month, a year or forever. It's off by default.
 
 **Make it yours**
 Choose tabs or separate windows, sound, window size and colors. Pick which quick buttons each window shows: Party Invite, Who and History, plus an optional Guild Invite shortcut. You can also hide whispers from your main chat, and move the minimap button or place it anywhere on screen. On Retail, DMme is also in the addon menu by the minimap.
