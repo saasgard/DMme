@@ -189,14 +189,31 @@ end
 
 -- "Name-Realm" of the WoW character a Battle.net friend is playing
 -- (same game version as you), or nil.
-local function GetBNCharacter(key)
+-- Game account info of a Battle.net friend who is playing a WoW character
+-- in the same game version as you, or nil.
+local function GetBNGame(key)
     local info = BNInfo(BNResolve(key))
     local g = info and info.gameAccountInfo
     if not g or not g.characterName or g.characterName == "" then return nil end
     if g.clientProgram and BNET_CLIENT_WOW and g.clientProgram ~= BNET_CLIENT_WOW then return nil end
     if g.wowProjectID and WOW_PROJECT_ID and g.wowProjectID ~= WOW_PROJECT_ID then return nil end
+    return g
+end
+
+-- "Name" or "Name-Realm" of the character a Battle.net friend is playing.
+local function GetBNCharacter(key)
+    local g = GetBNGame(key)
+    if not g then return nil end
     local name = g.characterName
-    if g.realmName and g.realmName ~= "" then name = name .. "-" .. g.realmName:gsub("[%s%-]", "") end
+    local realm = g.realmName
+    local sameRealm = g.realmID and GetRealmID and g.realmID == GetRealmID()
+    -- Some servers (e.g. Forever) report internal realm names like
+    -- "CAMWOWEU5Realm5PvE" that the server itself rejects in names: players
+    -- there are reached by plain name, so never append those.
+    local internal = realm and realm:find("Realm%d") ~= nil
+    if realm and realm ~= "" and not sameRealm and not internal then
+        name = name .. "-" .. realm:gsub("[%s%-]", "")
+    end
     return FullName(name)
 end
 
@@ -320,6 +337,25 @@ local function GuildInviteName(name)
 end
 
 local function PartyInviteName(name)
+    -- Battle.net friends: invite through their game account, like the
+    -- Friends list does (works no matter how their realm is named)
+    if IsBN(name) then
+        local g = GetBNGame(name)
+        if not g then
+            Print(ShortName(name) .. " isn't playing a character you can invite right now.")
+            return
+        end
+        if g.gameAccountID then
+            if FriendsFrame_InviteOrRequestToJoin and g.playerGuid then
+                FriendsFrame_InviteOrRequestToJoin(g.playerGuid, g.gameAccountID)
+                return
+            elseif BNInviteFriend then
+                BNInviteFriend(g.gameAccountID)
+                return
+            end
+        end
+        -- no Battle.net invite on this client: fall back to the character name
+    end
     name = ResolveTarget(name)
     if not name then return end
     local target = TargetName(name)
