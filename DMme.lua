@@ -58,6 +58,8 @@ local function KeyUnread(key)
 end
 -- Players we sent a /who for from a DMme button: [key] = time
 local whoPending = {}
+-- /who sent for a Battle.net friend's character: [characterKey] = "BN:..." key
+local whoAlias = {}
 
 ----------------------------------------------------------------------
 -- Style
@@ -330,33 +332,63 @@ end
 
 -- Battle.net friends: the friends list already knows their character's
 -- level, race, class and zone (works across realms and factions, unlike /who).
+-- Run a /who for a character name (results are picked up by StoreProfile).
+local function SendWhoFor(charName)
+    whoPending[FullName(charName)] = time()
+    local q = 'n-"' .. ShortName(charName) .. '"'
+    if C_FriendList and C_FriendList.SendWho then
+        C_FriendList.SendWho(q)
+    elseif SendWho then
+        SendWho(q)
+    end
+end
+
+local function NonEmpty(v)
+    if v == nil or v == "" or v == 0 then return nil end
+    return v
+end
+
 local function BNWho(key)
     local info = BNInfo(BNResolve(key))
     local g = info and info.gameAccountInfo
-    if not (g and g.characterName and g.characterName ~= "") then
+    if not (g and NonEmpty(g.characterName)) then
         Print(ShortName(key) .. " isn't playing a WoW character right now.")
         return
     end
-    StoreProfile(key, {
-        level = (g.characterLevel and g.characterLevel > 0) and g.characterLevel or nil,
-        race = g.raceName ~= "" and g.raceName or nil,
-        class = g.className ~= "" and g.className or nil,
-        zone = g.areaName ~= "" and g.areaName or nil,
+    local data = {
+        level = NonEmpty(g.characterLevel),
+        race = NonEmpty(g.raceName),
+        class = NonEmpty(g.className),
+        zone = NonEmpty(g.areaName),
         character = g.characterName,
-    })
+    }
+    StoreProfile(key, data)
+
+    -- answer in chat so the click always visibly does something
+    local parts = {}
+    if data.level then parts[#parts + 1] = "Level " .. data.level end
+    if data.race then parts[#parts + 1] = data.race end
+    if data.class then parts[#parts + 1] = data.class end
+    local line = ShortName(key) .. " is playing |cffffffff" .. g.characterName .. "|r"
+    if #parts > 0 then line = line .. " - " .. table.concat(parts, " ") end
+    if data.zone then line = line .. " - " .. data.zone end
+    Print(line)
+
+    -- on your realm/faction a real /who adds what Battle.net doesn't give
+    -- (guild, and level/race on clients that leave them out); the result is
+    -- copied into this Battle.net conversation (see StoreProfile)
+    local c = GetBNCharacter(key)
+    if c then
+        whoAlias[FullName(c)] = key
+        SendWhoFor(c)
+    end
 end
 
 local function WhoName(name)
     if IsBN(name) then BNWho(name); return end
     name = ResolveTarget(name)
     if not name then return end
-    whoPending[FullName(name)] = time()
-    local q = 'n-"' .. ShortName(name) .. '"'
-    if C_FriendList and C_FriendList.SendWho then
-        C_FriendList.SendWho(q)
-    elseif SendWho then
-        SendWho(q)
-    end
+    SendWhoFor(name)
 end
 
 -- Returns classFile, localizedClass, localizedRace for a GUID
@@ -757,8 +789,10 @@ local function UpdateTitle(f)
         if not info or (ga and ga.isOnline == false) then
             sub = sub .. "  (offline)"
         elseif ga and ga.characterName and ga.characterName ~= "" then
-            local lvl = (p and p.level and p.character == ga.characterName) and (" " .. p.level) or ""
+            local same = p and p.character == ga.characterName
+            local lvl = (same and p.level) and (" " .. p.level) or ""
             sub = sub .. "  -  " .. Colorize(ga.characterName, r, g, b) .. lvl .. (locClass and (" " .. locClass) or "")
+            if same and p.guild and p.guild ~= "" then sub = sub .. "  |cff40ff40<" .. p.guild .. ">|r" end
         end
     end
     if f.unread > 0 and f.minimized then
@@ -1941,6 +1975,18 @@ StoreProfile = function(name, data)
     if IsSecret(name) or AnySecret(data.level, data.race, data.class, data.guild, data.zone) then return end
     local key = FullName(name)
     if not key or not DB then return end
+    -- a /who for a Battle.net friend's character: fill in their Battle.net
+    -- conversation too (guild, and level/race if Battle.net left them out)
+    local alias = whoAlias[key]
+    if alias then
+        whoAlias[key] = nil
+        local merged = {}
+        for k, v in pairs(DB.profiles[alias] or {}) do merged[k] = v end
+        for k, v in pairs(data) do merged[k] = v end
+        merged.character = merged.character or ShortName(key)
+        merged.classFile = nil -- recomputed from the class name
+        StoreProfile(alias, merged)
+    end
     -- only keep profiles for people we talk to (or just /who'd from a window)
     if not (windows[key] or session[key] or DB.log[key] or DB.profiles[key] or whoPending[key]) then return end
     whoPending[key] = nil
