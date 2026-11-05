@@ -1,54 +1,49 @@
 # DMme
 
-Whispers in their own windows for World of Warcraft (Forever client, interface 16001).
-
 ![DMme logo](Art/curseforge-logo.png)
 
-## Features
+**Stop losing whispers in busy chat.**
 
-- **Whisper windows**: every conversation gets its own window, or one window with a **tab per player**
-- **Battle.net whispers** too, with the friend's current character shown
-- **Class colors** for names, text, tabs and unread markers (or classic whisper pink)
-- **Player profile** from `/who`: level, race, class, guild and zone in the window header
-- **Right-click a name** for the game's normal player menu
-- **Minimap button** with an unread badge (counted per conversation), a pulsing glow and a list of this session's whispers. Remove one or clear all. The button can be detached and placed anywhere.
-- **Session list survives `/reload`**: it's only cleared on a fresh login
-- **Optional history** (off by default): saves whispers and lets you search them in a History window
-- **Buttons per window**: Guild Invite, Party Invite, Who and History, each one can be toggled in Settings
-- Settings window, scale option and an entry under Esc → Options → AddOns
+DMme gives each of your private conversations its own window. Chat with friends, guildmates or the player selling the thing you've been farming for, without scrolling past trade chat to find what they said.
+
+## What it does
+
+**A window for every conversation**
+Each whisper opens in a clean, compact window. You can have them all in one window with a tab per person, or keep them as separate windows you can move and resize anywhere.
+
+**Battle.net friends included**
+Whispers from Battle.net friends show up too, along with the character they're currently playing.
+
+**See who you're talking to**
+Names, messages and tabs use each player's class color. Click **Who** to fill in the window header with their level, race, class and guild. Hover over the name for the full details.
+
+**Never miss a message**
+The minimap button glows and shows how many conversations are waiting for you. Click it for a list of everyone you've talked to this session, with their last message. The list stays through `/reload` and clears when you log out.
+
+**Right-click works as usual**
+Right-click any name in a DMme window for the same player menu you get in normal chat.
+
+**Keep your conversations (optional)**
+Turn on history to save your whispers between sessions. You can browse and search them later in the History window. It's off by default.
+
+**Make it yours**
+Choose tabs or separate windows, sound, window size and colors. Pick which quick buttons each window shows: Party Invite, Who and History, plus an optional Guild Invite shortcut. You can also hide whispers from your main chat, and move the minimap button or place it anywhere on screen.
+
+## Getting started
+
+1. Copy the `DMme` folder into `World of Warcraft\_forever_\Interface\AddOns\`.
+2. Start the game. The next whisper you get opens in its own window.
+3. Type `/dm` to open the settings, or right-click the minimap button.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `/dm` | Open settings |
-| `/dm help` | List all commands |
-| `/dm open <name>` | Open a whisper window |
-| `/dm list` | This session's whispers |
-| `/dm history [name]` | Browse saved whispers |
-| `/dm log [on\|off]` | Save whispers to disk |
-| `/dm tabs` | Toggle tabbed window |
-| `/dm minimap` / `/dm detach` | Show/hide or detach the minimap button |
-| `/dm scale <n>` | Window scale |
-| `/dm clear [name]` | Delete saved history |
-| `/dm reset` / `/dm closeall` | Reset positions / close all windows |
+| `/dm open <name>` | Start a conversation with someone |
+| `/dm list` | Show this session's conversations |
+| `/dm history` | Browse saved conversations |
+| `/dm tabs` | Switch between tabs and separate windows |
+| `/dm help` | Show every command |
 
-`/dmme` works as an alias.
-
-## Notes
-
-- **Guild invites:** on this client the game only allows guild invites you type yourself. Addons, secure buttons, macros and pre-filled chat are all blocked. The Guild Invite button (off by default) shows `/ginvite Name` ready to copy. Press Ctrl+C, then Enter, Ctrl+V, Enter in chat.
-- **Add Friend:** friends are Battle.net friends now, which need a BattleTag, so there is no Add Friend button.
-- **Saved data:** history is stored in `WTF\Account\<account>\SavedVariables\DMme.lua`.
-
-## Install
-
-Copy the `DMme` folder to `World of Warcraft\_forever_\Interface\AddOns\` and restart the game.
-
-## Art
-
-`Art/source/make_art.py` draws the logo and icons with plain Python (no dependencies):
-
-```
-python Art/source/make_art.py <addon folder> <preview folder>
-```
+`/dmme` works too.

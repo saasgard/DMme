@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: DMme
-## Notes: Whispers in their own windows: tabs, history, Battle.net, minimap list and more. Type /dm
+## Notes: Gives every whisper its own window, so you never lose a message in busy chat. Type /dm for settings.
 ## Author: stian
 ## Version: 2.0.0
 ## IconTexture: Interface\AddOns\DMme\Media\icon
