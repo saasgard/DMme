@@ -402,7 +402,18 @@ local function BNWho(key)
     }
     StoreProfile(key, data)
 
-    -- answer in chat so the click always visibly does something
+    -- Reachable character: a real /who adds what Battle.net doesn't give
+    -- (guild, up-to-date level/zone). The game prints its own result line and
+    -- it's copied into this Battle.net conversation (see StoreProfile).
+    local c = GetBNCharacter(key)
+    if c then
+        whoAlias[FullName(c)] = key
+        SendWhoFor(c)
+        return
+    end
+
+    -- No /who possible (e.g. another game version): answer in chat ourselves
+    -- so the click still visibly does something.
     local parts = {}
     if data.level then parts[#parts + 1] = "Level " .. data.level end
     if data.race then parts[#parts + 1] = data.race end
@@ -411,15 +422,6 @@ local function BNWho(key)
     if #parts > 0 then line = line .. " - " .. table.concat(parts, " ") end
     if data.zone then line = line .. " - " .. data.zone end
     Print(line)
-
-    -- on your realm/faction a real /who adds what Battle.net doesn't give
-    -- (guild, and level/race on clients that leave them out); the result is
-    -- copied into this Battle.net conversation (see StoreProfile)
-    local c = GetBNCharacter(key)
-    if c then
-        whoAlias[FullName(c)] = key
-        SendWhoFor(c)
-    end
 end
 
 local function WhoName(name)
