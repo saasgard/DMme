@@ -95,6 +95,20 @@ local function Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cffff80ffDMme|r: " .. tostring(msg))
 end
 
+-- Modern clients (Midnight-era API) can hand addons "secret" values, e.g.
+-- chat text during combat in instances. Those can't be inspected, stored or
+-- changed by addons, so DMme leaves such messages to the normal chat frame.
+local function IsSecret(v)
+    return issecretvalue ~= nil and v ~= nil and issecretvalue(v) == true
+end
+
+local function AnySecret(...)
+    for i = 1, select("#", ...) do
+        if IsSecret((select(i, ...))) then return true end
+    end
+    return false
+end
+
 -- Battle.net conversations use the key "BN:<BattleTag>" (e.g. "BN:Bob#1234"),
 -- which stays the same across sessions so saved history keeps working.
 local function IsBN(key)
@@ -1702,6 +1716,7 @@ end
 -- /who results -> player profile (level, race, class, guild, zone)
 ----------------------------------------------------------------------
 local function StoreProfile(name, data)
+    if IsSecret(name) or AnySecret(data.level, data.race, data.class, data.guild, data.zone) then return end
     local key = FullName(name)
     if not key or not DB then return end
     -- only keep profiles for people we talk to (or just /who'd from a window)
@@ -1838,7 +1853,7 @@ events:SetScript("OnEvent", function(self, event, ...)
         return
     elseif event == "CHAT_MSG_SYSTEM" then
         local msg = ...
-        if DB and type(msg) == "string" and msg:find("|Hplayer:", 1, true) then
+        if DB and not IsSecret(msg) and type(msg) == "string" and msg:find("|Hplayer:", 1, true) then
             if ParseWhoLine(msg) then
                 -- the who list usually has the exact class too; read it next frame
                 C_Timer.After(0, ReadWhoResults)
@@ -1867,6 +1882,9 @@ events:SetScript("OnEvent", function(self, event, ...)
 
     local text, sender = ...
     local guid = select(12, ...)
+    -- hidden from addons (e.g. in combat in an instance): the normal chat
+    -- frame still shows it; DMme can't read it, so it skips this one
+    if AnySecret(text, sender, guid, (select(13, ...))) then return end
     local key
     local isBN = event == "CHAT_MSG_BN_WHISPER" or event == "CHAT_MSG_BN_WHISPER_INFORM"
     if isBN then
@@ -1894,7 +1912,11 @@ end)
 
 -- Optionally hide whispers from the regular chat frames
 if AddFilter then
-    local function filter() return DB and DB.hideFromChat end
+    -- never hide a whisper DMme couldn't read (secret value): it would be lost
+    local function filter(_, _, msg, sender)
+        if AnySecret(msg, sender) then return false end
+        return DB and DB.hideFromChat
+    end
     AddFilter("CHAT_MSG_WHISPER", filter)
     AddFilter("CHAT_MSG_WHISPER_INFORM", filter)
     AddFilter("CHAT_MSG_BN_WHISPER", filter)
@@ -2200,17 +2222,48 @@ local function CreateSessionPanel()
     return p
 end
 
-local function ToggleSessionPanel()
+-- Tooltip with the latest conversations (minimap button + addon compartment).
+local function ShowSessionTooltip(owner, anchorPoint, isMinimapButton)
+    GameTooltip:SetOwner(owner, anchorPoint or "ANCHOR_LEFT")
+    GameTooltip:SetText("DMme", UIAccent())
+    local keys = SessionKeys()
+    if #keys == 0 then
+        GameTooltip:AddLine("No whispers yet this session.", 0.6, 0.6, 0.65)
+    else
+        for i = 1, math.min(5, #keys) do
+            local key = keys[i]
+            local unread = KeyUnread(key)
+            local cr, cg, cb = KeyRGB(key)
+            GameTooltip:AddDoubleLine(ShortName(key) .. (unread > 0 and ("  " .. KeyColorize(key, "(" .. unread .. ")")) or ""),
+                Ago(session[key].t), cr or 1, cg or 1, cb or 1, 0.6, 0.6, 0.65)
+        end
+    end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("|cffffd100Left-click|r  whisper list", 0.8, 0.8, 0.8)
+    GameTooltip:AddLine("|cffffd100Right-click|r  settings", 0.8, 0.8, 0.8)
+    if isMinimapButton then
+        GameTooltip:AddLine("|cffffd100Drag|r  move button" .. (DB.minimap.detached and " (anywhere)" or ""), 0.8, 0.8, 0.8)
+    end
+    GameTooltip:Show()
+end
+
+-- anchor: frame to open next to (default: the minimap button)
+local function ToggleSessionPanel(anchor)
     local p = sessionPanel or CreateSessionPanel()
     if p:IsShown() then p:Hide(); return end
     p:SetScale(DB.scale or 1)
     p:ClearAllPoints()
+    if not (anchor and anchor.GetCenter) then
+        anchor = (mmButton and mmButton:IsShown()) and mmButton or nil
+    end
     -- open towards the middle of the screen
-    local x = mmButton and mmButton:GetCenter()
-    if x and x > UIParent:GetWidth() / 2 then
-        p:SetPoint("TOPRIGHT", mmButton, "BOTTOMLEFT", 0, 0)
+    local x = anchor and anchor:GetCenter()
+    if not x then
+        p:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -220, -200)
+    elseif x > UIParent:GetWidth() / 2 then
+        p:SetPoint("TOPRIGHT", anchor, "BOTTOMLEFT", 0, 0)
     else
-        p:SetPoint("TOPLEFT", mmButton or UIParent, "BOTTOMRIGHT", 0, 0)
+        p:SetPoint("TOPLEFT", anchor, "BOTTOMRIGHT", 0, 0)
     end
     p.offset = 0
     p:Refresh()
@@ -2352,27 +2405,7 @@ CreateMinimapButton = function()
             DB.minimap.pos = { point, relPoint, x, y }
         end
     end)
-    b:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("DMme", 1, 0.5, 1)
-        local keys = SessionKeys()
-        if #keys == 0 then
-            GameTooltip:AddLine("No whispers yet this session.", 0.6, 0.6, 0.65)
-        else
-            for i = 1, math.min(5, #keys) do
-                local key = keys[i]
-                local unread = KeyUnread(key)
-                local cr, cg, cb = KeyRGB(key)
-                GameTooltip:AddDoubleLine(ShortName(key) .. (unread > 0 and ("  " .. KeyColorize(key, "(" .. unread .. ")")) or ""),
-                    Ago(session[key].t), cr or 1, cg or 1, cb or 1, 0.6, 0.6, 0.65)
-            end
-        end
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("|cffffd100Left-click|r  whisper list", 0.8, 0.8, 0.8)
-        GameTooltip:AddLine("|cffffd100Right-click|r  settings", 0.8, 0.8, 0.8)
-        GameTooltip:AddLine("|cffffd100Drag|r  move button" .. (DB.minimap.detached and " (anywhere)" or ""), 0.8, 0.8, 0.8)
-        GameTooltip:Show()
-    end)
+    b:SetScript("OnEnter", function(self) ShowSessionTooltip(self, "ANCHOR_LEFT", true) end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     mmButton = b
@@ -2723,4 +2756,25 @@ SlashCmdList.DMME = function(input)
         Print("  /dm clear [name] - delete saved logs")
         Print("  /dm reset | closeall")
     end
+end
+
+----------------------------------------------------------------------
+-- Retail addon compartment (the addon menu next to the minimap).
+-- Wired up in DMme.toc; clients without the compartment ignore it.
+----------------------------------------------------------------------
+function DMme_OnAddonCompartmentClick(_, mouseButton, menuButtonFrame)
+    if not DB then return end
+    if mouseButton == "RightButton" then
+        ShowSettings()
+    else
+        ToggleSessionPanel(menuButtonFrame)
+    end
+end
+
+function DMme_OnAddonCompartmentEnter(_, menuButtonFrame)
+    if DB and menuButtonFrame then ShowSessionTooltip(menuButtonFrame, "ANCHOR_LEFT") end
+end
+
+function DMme_OnAddonCompartmentLeave()
+    GameTooltip:Hide()
 end

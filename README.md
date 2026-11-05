@@ -6,6 +6,8 @@
 
 DMme gives each of your private conversations its own window. Chat with friends, guildmates or the player selling the thing you've been farming for, without scrolling past trade chat to find what they said.
 
+Works on **Retail** (12.1.5, plus the 12.1.7 PTR) and **Forever**.
+
 ## What it does
 
 **A window for every conversation**
@@ -27,11 +29,11 @@ Right-click any name in a DMme window for the same player menu you get in normal
 Turn on history to save your whispers between sessions. You can browse and search them later in the History window. It's off by default.
 
 **Make it yours**
-Choose tabs or separate windows, sound, window size and colors. Pick which quick buttons each window shows: Party Invite, Who and History, plus an optional Guild Invite shortcut. You can also hide whispers from your main chat, and move the minimap button or place it anywhere on screen.
+Choose tabs or separate windows, sound, window size and colors. Pick which quick buttons each window shows: Party Invite, Who and History, plus an optional Guild Invite shortcut. You can also hide whispers from your main chat, and move the minimap button or place it anywhere on screen. On Retail, DMme is also in the addon menu by the minimap.
 
 ## Getting started
 
-1. Copy the `DMme` folder into `World of Warcraft\_forever_\Interface\AddOns\`.
+1. Copy the `DMme` folder into your game's AddOns folder: `World of Warcraft\_retail_\Interface\AddOns\` or `World of Warcraft\_forever_\Interface\AddOns\`.
 2. Start the game. The next whisper you get opens in its own window.
 3. Type `/dm` to open the settings, or right-click the minimap button.
 
