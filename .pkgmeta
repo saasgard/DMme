@@ -3,3 +3,4 @@ package-as: DMme
 ignore:
   - Art
   - README.md
+  - .github

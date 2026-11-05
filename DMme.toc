@@ -1,12 +1,13 @@
 ## Interface: 16001, 120105, 120107
 ## Title: DMme
 ## Notes: Gives every whisper its own window, so you never lose a message in busy chat. Type /dm for settings.
-## Author: stian
+## Author: Skeide
 ## Version: 2.3.0
 ## IconTexture: Interface\AddOns\DMme\Media\icon
 ## AddonCompartmentFunc: DMme_OnAddonCompartmentClick
 ## AddonCompartmentFuncOnEnter: DMme_OnAddonCompartmentEnter
 ## AddonCompartmentFuncOnLeave: DMme_OnAddonCompartmentLeave
 ## SavedVariables: DMmeDB
+## X-Curse-Project-ID: 1785949
 
 DMme.lua
