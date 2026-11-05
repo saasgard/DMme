@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: DMme
+## Notes: Whispers in their own windows: tabs, history, Battle.net, minimap list and more. Type /dm
+## Author: stian
+## Version: 2.0.0
+## IconTexture: Interface\AddOns\DMme\Media\icon
+## SavedVariables: DMmeDB
+
+DMme.lua
