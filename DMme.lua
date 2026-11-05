@@ -1332,6 +1332,153 @@ StaticPopupDialogs["DMME_DELETE_LOG"] = {
     preferredIndex = 3,
 }
 
+----------------------------------------------------------------------
+-- Copy window: a conversation as plain, selectable text (Ctrl+C)
+----------------------------------------------------------------------
+-- Remove colour codes, textures and link wrappers ("|Hitem:..|h[Sword]|h" -> "[Sword]").
+local function PlainText(s)
+    s = s or ""
+    s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    s = s:gsub("|H.-|h(.-)|h", "%1")
+    s = s:gsub("|T.-|t", ""):gsub("|A.-|a", "")
+    s = s:gsub("|K.-|k", "?")
+    s = s:gsub("||", "|")
+    return s
+end
+
+-- The whole saved conversation with `key` as plain text, grouped by day.
+local function ConversationText(key)
+    local log = DB.log[key]
+    if not log then return "" end
+    local out, lastDay = {}, nil
+    local them = ShortName(key)
+    for _, e in ipairs(log.entries) do
+        local day = date("%Y%m%d", e.t)
+        if day ~= lastDay then
+            if lastDay then out[#out + 1] = "" end
+            out[#out + 1] = "--- " .. date("%A, %d %B %Y", e.t) .. " ---"
+            lastDay = day
+        end
+        local who = e.i and them or (e.me or playerName)
+        out[#out + 1] = "[" .. date("%H:%M", e.t) .. "] " .. who .. ": " .. PlainText(e.m)
+    end
+    return table.concat(out, "\n")
+end
+
+local copyLog
+
+local function ShowCopyLog(title, text)
+    if not copyLog then
+        local c = CreateFrame("Frame", "DMmeCopyLog", UIParent, BACKDROP_TEMPLATE)
+        c:SetSize(540, 380)
+        c:SetPoint("CENTER", 40, -20)
+        c:SetBackdrop(FLAT)
+        c:SetBackdropColor(unpack(C.bg))
+        c:SetBackdropBorderColor(unpack(C.border))
+        c:SetFrameStrata("FULLSCREEN_DIALOG")
+        c:SetToplevel(true)
+        c:SetClampedToScreen(true)
+        c:EnableMouse(true)
+        c:SetMovable(true)
+        c:RegisterForDrag("LeftButton")
+        c:SetScript("OnDragStart", c.StartMoving)
+        c:SetScript("OnDragStop", c.StopMovingOrSizing)
+        tinsert(UISpecialFrames, "DMmeCopyLog")
+
+        local shadow = c:CreateTexture(nil, "BACKGROUND", nil, -8)
+        shadow:SetTexture(WHITE)
+        shadow:SetVertexColor(0, 0, 0, 0.35)
+        shadow:SetPoint("TOPLEFT", -3, 3)
+        shadow:SetPoint("BOTTOMRIGHT", 4, -4)
+
+        local header = c:CreateTexture(nil, "BORDER")
+        header:SetPoint("TOPLEFT", 1, -1)
+        header:SetPoint("TOPRIGHT", -1, -1)
+        header:SetHeight(28)
+        SetGradientV(header, C.header, C.header2)
+        local line = c:CreateTexture(nil, "ARTWORK")
+        line:SetTexture(WHITE)
+        line:SetPoint("TOPLEFT", header, "BOTTOMLEFT")
+        line:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT")
+        line:SetHeight(1)
+        OnUIAccent(function(r, g, b) line:SetVertexColor(r, g, b, 0.9) end)
+
+        c.title = c:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        c.title:SetPoint("LEFT", c, "TOPLEFT", 10, -15)
+
+        local close = FlatButton(c, "x", { bare = true, width = 20, height = 20,
+            font = "GameFontHighlight", hoverColor = { 0.9, 0.25, 0.25 } })
+        close:SetPoint("TOPRIGHT", -4, -5)
+        close:SetScript("OnClick", function() c:Hide() end)
+
+        local hint = c:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        hint:SetPoint("BOTTOMLEFT", 12, 12)
+        hint:SetText("Press |cffffd100Ctrl+C|r to copy, then paste it anywhere with |cffffd100Ctrl+V|r.")
+
+        local selectAll = FlatButton(c, "Select all", { width = 80 })
+        selectAll:SetPoint("BOTTOMRIGHT", -10, 8)
+
+        -- text area
+        local box = CreateFrame("Frame", nil, c, BACKDROP_TEMPLATE)
+        box:SetPoint("TOPLEFT", 10, -38)
+        box:SetPoint("BOTTOMRIGHT", -10, 36)
+        box:SetBackdrop(FLAT)
+        box:SetBackdropColor(unpack(C.inset))
+        box:SetBackdropBorderColor(0.13, 0.13, 0.16, 1)
+
+        local sf = CreateFrame("ScrollFrame", nil, box)
+        sf:SetPoint("TOPLEFT", 8, -6)
+        sf:SetPoint("BOTTOMRIGHT", -8, 6)
+
+        local eb = CreateFrame("EditBox", nil, sf)
+        eb:SetMultiLine(true)
+        eb:SetAutoFocus(false)
+        eb:SetFontObject(ChatFontNormal)
+        eb:SetWidth(500)
+        eb:SetMaxLetters(0)
+        sf:SetScrollChild(eb)
+        sf:SetScript("OnSizeChanged", function(self, w) eb:SetWidth(w) end)
+
+        -- read-only: undo any typing
+        eb:SetScript("OnTextChanged", function(self, userInput)
+            if userInput then self:SetText(c.text or ""); self:HighlightText() end
+        end)
+        eb:SetScript("OnEscapePressed", function() c:Hide() end)
+        -- keep the cursor visible while moving through the text
+        eb:SetScript("OnCursorChanged", function(_, _, y, _, h)
+            y = -y
+            local top, height = sf:GetVerticalScroll(), sf:GetHeight()
+            if y < top then
+                sf:SetVerticalScroll(y)
+            elseif y + h > top + height then
+                sf:SetVerticalScroll(math.min(y + h - height, sf:GetVerticalScrollRange()))
+            end
+        end)
+        sf:EnableMouseWheel(true)
+        sf:SetScript("OnMouseWheel", function(self, delta)
+            local v = self:GetVerticalScroll() - delta * 40
+            self:SetVerticalScroll(math.max(0, math.min(v, self:GetVerticalScrollRange())))
+        end)
+        box:EnableMouse(true)
+        box:SetScript("OnMouseDown", function() eb:SetFocus() end)
+
+        selectAll:SetScript("OnClick", function() eb:SetFocus(); eb:HighlightText() end)
+
+        c.eb, c.sf = eb, sf
+        copyLog = c
+    end
+    copyLog.text = text
+    copyLog.title:SetText(title)
+    copyLog:SetScale(DB.scale or 1)
+    copyLog:Show()
+    copyLog:Raise()
+    copyLog.eb:SetText(text)
+    copyLog.eb:SetCursorPosition(0)
+    copyLog.sf:SetVerticalScroll(0)
+    copyLog.eb:SetFocus()
+    copyLog.eb:HighlightText()
+end
+
 local function CreateHistory()
     local h = CreateFrame("Frame", "DMmeHistory", UIParent, BACKDROP_TEMPLATE)
     h:SetSize(680, 430)
@@ -1495,7 +1642,7 @@ local function CreateHistory()
 
     h.who = right:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     h.who:SetPoint("TOPLEFT", 10, -10)
-    h.who:SetPoint("RIGHT", right, "RIGHT", -250, 0)
+    h.who:SetPoint("RIGHT", right, "RIGHT", -290, 0)
     h.who:SetJustifyH("LEFT")
 
     local del = FlatButton(right, "Delete", { hoverColor = { 0.9, 0.25, 0.25 },
@@ -1513,7 +1660,15 @@ local function CreateHistory()
     local chat = FlatButton(right, "Open Chat", { tooltip = "Open whisper window" })
     chat:SetPoint("RIGHT", gi, "LEFT", -4, 0)
     chat:SetScript("OnClick", function() if h.selected then OpenWindow(h.selected) end end)
-    h.toolButtons = { del, gi, chat }
+    local copy = FlatButton(right, "Copy", { tooltip = "Copy conversation",
+        tooltipText = "Opens the whole conversation as plain text, ready to copy with Ctrl+C." })
+    copy:SetPoint("RIGHT", chat, "LEFT", -4, 0)
+    copy:SetScript("OnClick", function()
+        if h.selected then
+            ShowCopyLog("Conversation with " .. ShortName(h.selected), ConversationText(h.selected))
+        end
+    end)
+    h.toolButtons = { del, gi, chat, copy }
 
     local sep = right:CreateTexture(nil, "ARTWORK")
     sep:SetTexture(WHITE)
