@@ -558,10 +558,22 @@ if Menu and Menu.ModifyMenu then
         local name
         if contextData.bnetIDAccount then
             name = BNKeyFromID(contextData.bnetIDAccount) -- Battle.net friend
+        elseif contextData.unit then
+            -- portraits / unit frames: the menu gives the bare name and often no
+            -- realm, so ask the game for "Name-Realm" (realm is nil on your own realm)
+            local unit = contextData.unit
+            if not (UnitIsPlayer and UnitIsPlayer(unit)) then return end -- NPCs: nothing to add
+            local n, realm = UnitName(unit)
+            if AnySecret(n, realm) or not n or n == "" then return end
+            -- UnitName gives the realm as displayed ("Argent Dawn"); whispers and
+            -- chat use it without spaces or dashes ("Name-ArgentDawn")
+            realm = realm and realm:gsub("[%s%-]", "")
+            name = (realm and realm ~= "") and (n .. "-" .. realm) or n
         elseif contextData.name then
             name = contextData.name
-            if contextData.server and contextData.server ~= "" then
-                name = name .. "-" .. contextData.server
+            local server = contextData.server and contextData.server:gsub("[%s%-]", "")
+            if server and server ~= "" then
+                name = name .. "-" .. server
             end
         end
         if not name then return end
@@ -584,9 +596,18 @@ elseif UnitPopup_ShowMenu then
     local allowed = { FRIEND = true, PLAYER = true, PARTY = true, RAID_PLAYER = true, TARGET = true }
     hooksecurefunc("UnitPopup_ShowMenu", function(dropdown, which, unit, name, userData)
         if not allowed[which] or UIDROPDOWNMENU_MENU_LEVEL ~= 1 then return end
-        local target = name or (unit and GetUnitName(unit, true))
+        -- a unit (portrait) knows its realm; the bare `name` doesn't
+        local target = name
+        if unit and UnitIsPlayer and UnitIsPlayer(unit) then
+            local n, realm = UnitName(unit)
+            if n and not AnySecret(n, realm) then
+                realm = realm and realm:gsub("[%s%-]", "")
+                target = (realm and realm ~= "") and (n .. "-" .. realm) or n
+            end
+        end
         if not target or target == playerName then return end
         local server = dropdown and dropdown.server
+        server = server and server:gsub("[%s%-]", "")
         if server and server ~= "" and not target:find("-", 1, true) then
             target = target .. "-" .. server
         end
