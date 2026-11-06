@@ -1,0 +1,10 @@
+The emoji images in this folder are from Twemoji
+(https://github.com/jdecked/twemoji, version 15.1.0).
+
+Copyright 2019 Twitter, Inc and other contributors.
+Copyright 2024 jdecked and other contributors.
+
+The graphics are licensed under CC-BY 4.0:
+https://creativecommons.org/licenses/by/4.0/
+
+They were resized to 64x64 and converted to TGA for World of Warcraft.
