@@ -57,7 +57,16 @@ local defaults = {
 -- shared between files: ns.DB
 local windows = {}      -- [fullName] = frame
 ns.windowCount = 0
+-- Your character's name as whispers use it. On Forever characters have
+-- two-part names ("Magic Mageen") and UnitName gives the two parts as two
+-- values; on Retail the second value is a realm, which is never returned for
+-- yourself. So a second value for "player" means this client uses two-part names.
+local function TwoPartNames()
+    local _, second = UnitName("player")
+    return second ~= nil and second ~= ""
+end
 local playerName = UnitName("player")
+if TwoPartNames() then playerName = playerName .. " " .. select(2, UnitName("player")) end
 -- forward declarations (defined further down)
 -- shared between files: ns.ShowHistory, ns.ShowSettings, ns.ActivateTab, ns.CloseTab, ns.RefreshTabs, ns.UpdateSessionUI
 -- shared between files: ns.CreateMinimapButton, ns.OpenWindow, ns.StoreProfile
@@ -284,6 +293,20 @@ local function AnySecret(...)
         if IsSecret((select(i, ...))) then return true end
     end
     return false
+end
+
+-- Name to whisper a player unit by (portraits, party/raid frames), or nil
+-- for NPCs and names the game hides from addons.
+--   Forever:  "Mrs Karma"         first name + surname, with a space
+--   Retail:   "Name-ArgentDawn"   other realms (realm without spaces/dashes)
+--             "Name"              your own realm
+function ns.UnitWhisperName(unit)
+    if not (unit and UnitIsPlayer and UnitIsPlayer(unit)) then return nil end
+    local n, second = UnitName(unit)
+    if AnySecret(n, second) or not n or n == "" then return nil end
+    if not second or second == "" then return n end
+    if TwoPartNames() then return n .. " " .. second end
+    return n .. "-" .. (second:gsub("[%s%-]", ""))
 end
 
 -- Battle.net conversations use the key "BN:<BattleTag>" (e.g. "BN:Bob#1234"),
