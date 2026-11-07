@@ -34,6 +34,9 @@ Whispers that arrive during combat wait until the fight is over before their win
 **Spam filter**
 Gold sellers and boosting ads are caught before they open a window. Friends, guildmates, your group and anyone you're already talking to are never filtered. You can view what was blocked and edit the word list.
 
+**Mute someone**
+Need a break from someone? Right-click their name and choose **Mute whispers** for 1 hour, 24 hours, a week, a month or forever. Their whispers won't open a window, play a sound or show in your main chat, and they can't tell. The mute ends by itself, or you can unmute them early from the same menu or from **Settings → Chat → Show muted**.
+
 **See who you're talking to**
 Names, messages and tabs use each player's class color. Click **Who** to fill in the window header with their level, race, class and guild. Hover over the name for the full details.
 
@@ -58,6 +61,8 @@ Settings are split into General, Look, Chat and History tabs. Choose tabs or sep
 | `/dm list` | Show this session's conversations |
 | `/dm friends` | Show online friends, click one to chat |
 | `/dm history` | Browse saved conversations |
+| `/dm mute <name> [1h\|24h\|week\|month\|forever]` | Mute someone's whispers |
+| `/dm unmute <name>` | Unmute someone |
 | `/dm tabs` | Switch between tabs and separate windows |
 | `/dm theme dark\|forever\|midnight` | Switch the look |
 | `/dm button [size\|reset]` | Show, resize or reset the floating button |

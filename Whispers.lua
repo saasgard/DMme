@@ -91,9 +91,191 @@ local function SpamLogText()
     local out = {}
     for _, e in ipairs(spamLog) do
         out[#out + 1] = "[" .. date("%H:%M", e.t) .. "] " .. ShortName(e.key) .. ": " .. e.text
-            .. "   (matched \"" .. e.word .. "\")"
+            .. (e.muted and "   (muted)" or ("   (matched \"" .. e.word .. "\")"))
     end
     return table.concat(out, "\n")
+end
+
+----------------------------------------------------------------------
+-- Mute: silence one person's whispers (and Battle.net whispers) for a
+-- while. Muted whispers open no window, play no sound and are hidden from
+-- the main chat too. They are listed under Settings > Chat > Show blocked.
+-- DB.mutes[key] = time the mute ends, or 0 for forever.
+----------------------------------------------------------------------
+local MUTE_OPTIONS = {
+    { id = "1h",      label = "1 hour",   secs = 3600 },
+    { id = "24h",     label = "24 hours", secs = 86400 },
+    { id = "week",    label = "1 week",   secs = 7 * 86400 },
+    { id = "month",   label = "1 month",  secs = 30 * 86400 },
+    { id = "forever", label = "Forever",  secs = 0 },
+}
+local MUTE_ALIASES = {
+    ["1h"] = "1h", hour = "1h", ["1hour"] = "1h",
+    ["24h"] = "24h", day = "24h", ["1d"] = "24h", ["24hours"] = "24h",
+    week = "week", ["1w"] = "week", ["7d"] = "week",
+    month = "month", ["1m"] = "month", ["30d"] = "month",
+    forever = "forever", perm = "forever", always = "forever",
+}
+local function MuteOption(id)
+    id = MUTE_ALIASES[(id or ""):lower():gsub("%s", "")]
+    for _, o in ipairs(MUTE_OPTIONS) do if o.id == id then return o end end
+end
+
+-- Mute end time for a key, or nil. Expired mutes are removed here.
+local function MutedUntil(key)
+    local until_ = key and ns.DB and ns.DB.mutes[key]
+    if not until_ then return nil end
+    if until_ ~= 0 and until_ <= time() then
+        ns.DB.mutes[key] = nil
+        return nil
+    end
+    return until_
+end
+local function IsMuted(key) return MutedUntil(key) ~= nil end
+
+-- "forever" / "3d 4h" / "2h 10m" / "5m"
+local function MuteLeftText(key)
+    local until_ = MutedUntil(key)
+    if not until_ then return nil end
+    if until_ == 0 then return "forever" end
+    local left = until_ - time()
+    local d, h, m = math.floor(left / 86400), math.floor(left % 86400 / 3600), math.ceil(left % 3600 / 60)
+    if m == 60 then h, m = h + 1, 0 end
+    if d > 0 then return d .. "d " .. h .. "h" end
+    if h > 0 then return h .. "h " .. m .. "m" end
+    return math.max(m, 1) .. "m"
+end
+
+local function AfterMutesChanged()
+    if ns.settings and ns.settings:IsShown() then ns.settings:Refresh() end
+    if ns.mutedList and ns.mutedList:IsShown() then ns.mutedList:Refresh() end
+end
+
+local function MuteName(name, optId)
+    local key, o = FullName(name), MuteOption(optId)
+    if not key or not o or not ns.DB then return end
+    ns.DB.mutes[key] = o.secs == 0 and 0 or time() + o.secs
+    Print("Muted " .. ShortName(key) .. (o.secs == 0 and " forever" or (" for " .. o.label)) ..
+        ". Undo with |cffffd100/dm unmute " .. ShortName(key) .. "|r.")
+    AfterMutesChanged()
+end
+
+local function UnmuteName(name)
+    local key = FullName(name)
+    if not key or not ns.DB then return end
+    if not ns.DB.mutes[key] then
+        -- typed without a realm: match a muted "Name-Realm" by its first part
+        for k in pairs(ns.DB.mutes) do
+            if ShortName(k):lower() == ShortName(key):lower() then key = k; break end
+        end
+    end
+    if ns.DB.mutes[key] then
+        ns.DB.mutes[key] = nil
+        Print("Unmuted " .. ShortName(key) .. ".")
+    else
+        Print(ShortName(key) .. " is not muted.")
+    end
+    AfterMutesChanged()
+end
+
+-- Drop expired mutes (at login); returns the number still muted.
+local function PruneMutes()
+    local n = 0
+    for key in pairs(ns.DB.mutes) do
+        if IsMuted(key) then n = n + 1 end
+    end
+    return n
+end
+
+-- Window listing muted people, with an Unmute button each.
+local function ShowMutedList()
+    local m = ns.mutedList
+    if not m then
+        local ROWS, ROW_H = 10, 22
+        m = CreateFrame("Frame", "DMmeMutedList", UIParent, BACKDROP_TEMPLATE)
+        m:SetSize(320, 74 + ROWS * ROW_H)
+        m:SetPoint("CENTER", 60, 0)
+        Skin(m, "window")
+        m:SetFrameStrata("FULLSCREEN_DIALOG")
+        m:SetToplevel(true)
+        m:SetClampedToScreen(true)
+        m:EnableMouse(true)
+        m:SetMovable(true)
+        m:RegisterForDrag("LeftButton")
+        m:SetScript("OnDragStart", m.StartMoving)
+        m:SetScript("OnDragStop", m.StopMovingOrSizing)
+        tinsert(UISpecialFrames, "DMmeMutedList")
+
+        local header = m:CreateTexture(nil, "BORDER")
+        SkinHeader(header, 29)
+        local title = m:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        title:SetPoint("LEFT", m, "TOPLEFT", 12, -15)
+        title:SetText("Muted players")
+        local close = FlatButton(m, "x", { bare = true, width = 20, height = 20,
+            font = "GameFontHighlight", hoverColor = { 0.9, 0.25, 0.25 } })
+        close:SetPoint("TOPRIGHT", -6, -5)
+        close:SetScript("OnClick", function() m:Hide() end)
+
+        local empty = m:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+        empty:SetPoint("TOP", 0, -60)
+        empty:SetText("Nobody is muted.")
+        local hint = m:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        hint:SetPoint("BOTTOMLEFT", 12, 12)
+        hint:SetPoint("RIGHT", -12, 0)
+        hint:SetJustifyH("LEFT")
+        hint:SetText("Mute someone: right-click their name > Mute whispers,\nor /dm mute <name> [1h|24h|week|month|forever].")
+
+        m.offset = 0
+        m.rows = {}
+        for i = 1, ROWS do
+            local r = CreateFrame("Frame", nil, m)
+            r:SetHeight(ROW_H)
+            r:SetPoint("TOPLEFT", 12, -36 - (i - 1) * ROW_H)
+            r:SetPoint("RIGHT", -12, 0)
+            r.name = r:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            r.name:SetPoint("LEFT", 0, 0)
+            r.name:SetWidth(150)
+            r.name:SetJustifyH("LEFT")
+            r.left = r:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            r.left:SetPoint("LEFT", r.name, "RIGHT", 4, 0)
+            r.btn = FlatButton(r, "Unmute", { width = 64, height = 18 })
+            r.btn:SetPoint("RIGHT", 0, 0)
+            r.btn:SetScript("OnClick", function(self) UnmuteName(self.key) end)
+            m.rows[i] = r
+        end
+        m:EnableMouseWheel(true)
+        m:SetScript("OnMouseWheel", function(self, delta)
+            self.offset = self.offset - delta
+            self:Refresh()
+        end)
+
+        function m:Refresh()
+            local keys = {}
+            for key in pairs(ns.DB.mutes) do
+                if IsMuted(key) then keys[#keys + 1] = key end
+            end
+            table.sort(keys, function(a, b) return ShortName(a):lower() < ShortName(b):lower() end)
+            self.offset = math.max(0, math.min(self.offset, #keys - ROWS))
+            for i, r in ipairs(self.rows) do
+                local key = keys[i + self.offset]
+                if key then
+                    r.name:SetText(ShortName(key))
+                    r.left:SetText(MuteLeftText(key) == "forever" and "forever" or (MuteLeftText(key) .. " left"))
+                    r.btn.key = key
+                    r:Show()
+                else
+                    r:Hide()
+                end
+            end
+            empty:SetShown(#keys == 0)
+        end
+        m:SetScript("OnShow", m.Refresh)
+        ns.mutedList = m
+    end
+    m:SetScale(ns.DB.scale or 1)
+    m:Show()
+    m:Raise()
+    m:Refresh()
 end
 
 -- Editor for the spam word list: one word or phrase per line.
@@ -471,6 +653,7 @@ events:SetScript("OnEvent", function(self, event, ...)
         if ns.DB and not ns.DB.minimap.hide then ns.CreateMinimapButton() end
         if ns.DB and ns.DB.floatButton.show then ns.CreateFloatButton() end
         if ns.DB then PruneHistory() end -- drop history older than "Keep history for"
+        if ns.DB then PruneMutes() end   -- drop mutes that ran out
         -- Re-key data saved by older versions as "Name-<own realm>"
         if ns.DB then
             for _, tbl in ipairs({ ns.DB.log, ns.DB.guids, ns.DB.positions }) do
@@ -505,6 +688,13 @@ events:SetScript("OnEvent", function(self, event, ...)
     end
     if not key then return end
 
+    if (event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_BN_WHISPER") and IsMuted(key) then
+        spamLog[#spamLog + 1] = { t = time(), key = key, text = text, muted = true }
+        if #spamLog > SPAM_LOG_MAX then table.remove(spamLog, 1) end
+        if ns.settings and ns.settings:IsShown() then ns.settings:Refresh() end
+        return -- muted: no window, no sound
+    end
+
     if event == "CHAT_MSG_WHISPER" then
         local spam, word = IsSpam(key, text, guid, (select(6, ...)))
         if spam then RecordSpam(key, text, word); return end -- no window, no sound
@@ -528,6 +718,12 @@ if AddFilter then
     local function filter(_, event, msg, sender, ...)
         if AnySecret(msg, sender) then return false end
         if not ns.DB then return false end
+        -- muted people: hidden from the main chat too
+        if event == "CHAT_MSG_WHISPER" and IsMuted(FullName(sender)) then return true end
+        if event == "CHAT_MSG_BN_WHISPER" and next(ns.DB.mutes) then
+            local id = select(11, ...) -- arg13 = Battle.net account ID
+            if not AnySecret(id) and IsMuted((BNKeyFromID(id))) then return true end
+        end
         if event == "CHAT_MSG_WHISPER" and ns.DB.spamFilter then
             -- ... starts at arg3: flags = arg6, guid = arg12
             local flags, guid = select(4, ...), select(10, ...)
@@ -596,7 +792,7 @@ if Menu and Menu.ModifyMenu then
             end
         end
         if not name then return end
-        if not ns.DB or not (ns.DB.menu.guild or ns.DB.menu.open) then return end
+        if not ns.DB or not (ns.DB.menu.guild or ns.DB.menu.open or ns.DB.menu.mute) then return end
         root:CreateDivider()
         root:CreateTitle("DMme")
         if ns.DB.menu.guild then
@@ -604,6 +800,18 @@ if Menu and Menu.ModifyMenu then
         end
         if ns.DB.menu.open then
             root:CreateButton("Open Whisper Window", function() ns.OpenWindow(name) end)
+        end
+        if ns.DB.menu.mute and FullName(name) ~= FullName(playerName) then
+            local left = MuteLeftText(FullName(name))
+            if left then
+                root:CreateButton("Unmute (" .. (left == "forever" and "muted forever" or (left .. " left")) .. ")",
+                    function() UnmuteName(name) end)
+            else
+                local sub = root:CreateButton("Mute whispers")
+                for _, o in ipairs(MUTE_OPTIONS) do
+                    sub:CreateButton(o.label, function() MuteName(name, o.id) end)
+                end
+            end
         end
     end
     for _, tag in ipairs({ "MENU_UNIT_FRIEND", "MENU_UNIT_PLAYER", "MENU_UNIT_PARTY",
@@ -638,6 +846,19 @@ elseif UnitPopup_ShowMenu then
             info.text = "Open Whisper Window"
             info.notCheckable = true
             info.func = function() ns.OpenWindow(target) end
+            UIDropDownMenu_AddButton(info, 1)
+        end
+        if ns.DB.menu.mute then
+            -- no submenu here: 24 hours (other lengths: /dm mute <name> <time>)
+            local info = UIDropDownMenu_CreateInfo()
+            info.notCheckable = true
+            if IsMuted(FullName(target)) then
+                info.text = "Unmute Whispers"
+                info.func = function() UnmuteName(target) end
+            else
+                info.text = "Mute Whispers (24 hours)"
+                info.func = function() MuteName(target, "24h") end
+            end
             UIDropDownMenu_AddButton(info, 1)
         end
     end)
@@ -675,3 +896,11 @@ end
 ns.spamLog = spamLog
 ns.SpamLogText = SpamLogText
 ns.ShowSpamEditor = ShowSpamEditor
+ns.MUTE_OPTIONS = MUTE_OPTIONS
+ns.MuteOption = MuteOption
+ns.IsMuted = IsMuted
+ns.MuteLeftText = MuteLeftText
+ns.MuteName = MuteName
+ns.UnmuteName = UnmuteName
+ns.PruneMutes = PruneMutes
+ns.ShowMutedList = ShowMutedList

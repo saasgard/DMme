@@ -33,7 +33,9 @@ local defaults = {
     menu = {              -- extra entries in the right-click menu on names
         guild = false,
         open = true,
+        mute = true,      -- "Mute whispers" with 1 hour ... Forever
     },
+    mutes = {},           -- [fullName] = time the mute ends (0 = forever)
     minimap = {           -- minimap button
         hide = false,
         angle = 200,      -- position around the minimap, in degrees

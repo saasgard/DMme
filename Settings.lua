@@ -539,11 +539,25 @@ local function CreateSettings()
             { tooltip = "Show blocked", tooltipText = "Whispers the filter blocked this session, and which word matched." } },
     })
 
+    Section("Muted players")
+    local muteInfo = Note("", "000 muted")
+    refreshers[#refreshers + 1] = function()
+        local n = ns.PruneMutes()
+        muteInfo:SetText(n == 0 and "Nobody is muted. Right-click a name > Mute whispers."
+            or (n .. (n == 1 and " player" or " players") .. " muted"))
+    end
+    Buttons({
+        { "Show muted", 100, function() ns.ShowMutedList() end,
+            { tooltip = "Show muted", tooltipText = "Everyone you muted, how long is left, and Unmute buttons." } },
+    })
+
     Section("Right-click menu on names")
     Check("Guild Invite", "Adds Guild Invite to the right-click menu on player names.",
         function() return ns.DB.menu.guild end, function(v) ns.DB.menu.guild = v end)
     Check("Open Whisper Window", nil,
         function() return ns.DB.menu.open end, function(v) ns.DB.menu.open = v end)
+    Check("Mute Whispers", "Mute someone for 1 hour, 24 hours, a week, a month or forever.\nTheir whispers open no window, play no sound and are hidden\nfrom the main chat. They can't tell they are muted.",
+        function() return ns.DB.menu.mute end, function(v) ns.DB.menu.mute = v end)
     EndPage()
 
     ------------------------------------------------------------------
@@ -669,6 +683,21 @@ SlashCmdList.DMME = function(input)
         if ns.settings and ns.settings:IsShown() then ns.settings:Refresh() end
     elseif cmd == "open" or cmd == "w" then
         if rest ~= "" then ns.OpenWindow(rest) else Print("Usage: /dm open <name>") end
+    elseif cmd == "mute" then
+        -- /dm mute <name> [1h|24h|week|month|forever]   (default: forever)
+        -- the last word is the length if it is one; names can have spaces on Forever
+        local name, len = rest:match("^(.-)%s+(%S+)$")
+        if not (name and ns.MuteOption(len)) then name, len = rest, "forever" end
+        name = name:gsub("^%s+", ""):gsub("%s+$", "")
+        if name ~= "" then
+            ns.MuteName(name, len)
+        else
+            Print("Usage: /dm mute <name> [1h|24h|week|month|forever]")
+        end
+    elseif cmd == "unmute" then
+        if rest ~= "" then ns.UnmuteName(rest) else Print("Usage: /dm unmute <name>") end
+    elseif cmd == "muted" then
+        ns.ShowMutedList()
     elseif cmd == "ginvite" or cmd == "gi" then
         if rest ~= "" then GuildInviteName(FullName(rest)) else Print("Usage: /dm ginvite <name>") end
     elseif cmd == "hide" then
@@ -745,6 +774,8 @@ SlashCmdList.DMME = function(input)
         Print("  /dm button [size|reset] - floating button: show/hide, resize, or reset")
         Print("  /dm open <name> - open a whisper window")
         Print("  /dm ginvite <name> - show the /ginvite command to copy")
+        Print("  /dm mute <name> [1h|24h|week|month|forever] - silence someone's whispers")
+        Print("  /dm unmute <name> | /dm muted - undo a mute, list muted players")
         Print("  /dm hide - toggle hiding whispers from main chat (now " .. (ns.DB.hideFromChat and "ON" or "OFF") .. ")")
         Print("  /dm sound - toggle whisper sound (now " .. (ns.DB.sound and "ON" or "OFF") .. ")")
         Print("  /dm auto - toggle auto-open on whisper (now " .. (ns.DB.autoOpen and "ON" or "OFF") .. ")")
