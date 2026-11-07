@@ -1068,6 +1068,17 @@ local function FormatEntry(key, e, dim)
     return string.format("%s  %s  %s", stamp, nameText, Colorize(Emoji.Render(Linkify(e.m, tc[1], tc[2], tc[3])), tc[1], tc[2], tc[3]))
 end
 
+-- Any menu DMme opens runs as "DMme" (tainted), so Blizzard's own
+-- "Copy Character Name" in it is blocked: CopyToClipboard() is protected.
+-- While the menu is built we remember the name; Whispers.lua then points that
+-- one entry at our copy box instead (see FixCopyName there).
+local function OpenItemRef(link, text, button, copyName)
+    ns.menuCopyName = copyName
+    local ok, err = pcall(SetItemRef, link, text, button, DEFAULT_CHAT_FRAME)
+    ns.menuCopyName = nil
+    if not ok then geterrorhandler()(err) end
+end
+
 -- Open the game's own player right-click menu (same as in normal chat).
 local function ShowPlayerMenu(name)
     if not name or not SetItemRef then return end
@@ -1075,12 +1086,12 @@ local function ShowPlayerMenu(name)
         local id = BNResolve(name)
         local info = BNInfo(id)
         if info and info.accountName then
-            SetItemRef("BNplayer:" .. info.accountName .. ":" .. id .. ":0:BN_WHISPER:" .. info.accountName,
-                "[" .. info.accountName .. "]", "RightButton", DEFAULT_CHAT_FRAME)
+            OpenItemRef("BNplayer:" .. info.accountName .. ":" .. id .. ":0:BN_WHISPER:" .. info.accountName,
+                "[" .. info.accountName .. "]", "RightButton", info.accountName)
         end
         return
     end
-    SetItemRef("player:" .. name, "[" .. ShortName(name) .. "]", "RightButton", DEFAULT_CHAT_FRAME)
+    OpenItemRef("player:" .. name, "[" .. ShortName(name) .. "]", "RightButton", name)
 end
 
 -- Hyperlink clicks in our message frames:
@@ -1106,7 +1117,7 @@ local function HandleLink(_, link, text, button)
         ns.OpenWindow((BNKeyFromID(bnID)))
         return
     end
-    SetItemRef(link, text, button, DEFAULT_CHAT_FRAME)
+    OpenItemRef(link, text, button, name)
 end
 
 local function DayHeader(t)
@@ -1188,6 +1199,7 @@ ns.PruneHistory = PruneHistory
 ns.Emoji = Emoji
 ns.FormatEntry = FormatEntry
 ns.ShowPlayerMenu = ShowPlayerMenu
+ns.ShowCopyBox = ShowCopyBox
 ns.HandleLink = HandleLink
 ns.DayHeader = DayHeader
 ns.SetLogging = SetLogging

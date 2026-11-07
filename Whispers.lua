@@ -546,7 +546,31 @@ end
 ----------------------------------------------------------------------
 if Menu and Menu.ModifyMenu then
     -- Modern menu system
+
+    -- A menu DMme opened runs as "DMme", so the game's "Copy Character Name"
+    -- would fail (CopyToClipboard() is protected). Point that entry at our own
+    -- copy box instead: the name shows selected, ready for Ctrl+C.
+    local COPY_LABEL = COPY_CHARACTER_NAME or "Copy Character Name"
+    local function FixCopyName(desc, name)
+        if not desc.EnumerateElementDescriptions then return end
+        for _, child in desc:EnumerateElementDescriptions() do
+            local ok, text = pcall(MenuUtil.GetElementText, child)
+            if ok and text == COPY_LABEL and child.SetResponder then
+                child:SetResponder(function()
+                    ns.ShowCopyBox(name, "Press |cffffd100Ctrl+C|r to copy the name.",
+                        "Name copied - paste it with |cffffd100Ctrl+V|r.")
+                    return MenuResponse and MenuResponse.Close
+                end)
+            else
+                FixCopyName(child, name) -- also look inside submenus
+            end
+        end
+    end
+
     local function addEntries(owner, root, contextData)
+        if ns.menuCopyName and MenuUtil and MenuUtil.GetElementText then
+            FixCopyName(root, ns.menuCopyName)
+        end
         if not contextData then return end
         -- Never in menus opened from the Friends list. Menu items an addon adds
         -- carry its taint, and Blizzard closes menus without protection: the close
