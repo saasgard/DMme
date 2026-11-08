@@ -361,10 +361,10 @@ local function ShowSpamEditor()
             e:Hide()
             if ns.settings and ns.settings:IsShown() then ns.settings:Refresh() end
         end)
-        local defaults = FlatButton(e, "Defaults", { width = 80, tooltip = "Default words",
+        local defaultsBtn = FlatButton(e, "Defaults", { width = 80, tooltip = "Default words",
             tooltipText = "Put back the default word list.\n(Not saved until you click Save.)" })
-        defaults:SetPoint("RIGHT", save, "LEFT", -6, 0)
-        defaults:SetScript("OnClick", function() eb:SetText(table.concat(DEFAULT_SPAM_WORDS, "\n")) end)
+        defaultsBtn:SetPoint("RIGHT", save, "LEFT", -6, 0)
+        defaultsBtn:SetScript("OnClick", function() eb:SetText(table.concat(DEFAULT_SPAM_WORDS, "\n")) end)
         e.eb = eb
         spamEditor = e
     end
@@ -763,7 +763,7 @@ if Menu and Menu.ModifyMenu then
         end
     end
 
-    local function addEntries(owner, root, contextData)
+    local function addEntries(_owner, root, contextData)
         if ns.menuCopyName and MenuUtil and MenuUtil.GetElementText then
             FixCopyName(root, ns.menuCopyName)
         end
@@ -821,7 +821,7 @@ if Menu and Menu.ModifyMenu then
 elseif UnitPopup_ShowMenu then
     -- Legacy UIDropDownMenu fallback
     local allowed = { FRIEND = true, PLAYER = true, PARTY = true, RAID_PLAYER = true, TARGET = true }
-    hooksecurefunc("UnitPopup_ShowMenu", function(dropdown, which, unit, name, userData)
+    hooksecurefunc("UnitPopup_ShowMenu", function(dropdown, which, unit, name, _userData)
         if not allowed[which] or UIDROPDOWNMENU_MENU_LEVEL ~= 1 then return end
         -- a unit (portrait) knows the whole name; the bare `name` may not
         local fromUnit = unit and ns.UnitWhisperName(unit)

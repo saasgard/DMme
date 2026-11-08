@@ -190,11 +190,11 @@ local function CreateReplyMenu()
             a:SetDisabledTexture(base .. "Disabled")
             a:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
             a:SetScript("OnClick", function()
-                local i = row.index
-                local j = up and i - 1 or i + 1
+                local idx = row.index
+                local j = up and idx - 1 or idx + 1
                 local list = ns.DB.replies
-                if list[i] and list[j] then
-                    list[i], list[j] = list[j], list[i]
+                if list[idx] and list[j] then
+                    list[idx], list[j] = list[j], list[idx]
                     m:Refresh()
                 end
             end)
@@ -706,7 +706,13 @@ local function CreateWindow(key)
         font = "GameFontHighlight", hoverColor = { 0.9, 0.25, 0.25 } })
     close:SetPoint("TOPRIGHT", -6, -7)
     close:SetScript("OnClick", function()
-        if ns.DB.tabbed then ns.CloseTab(f.key) else f:Hide() end
+        if not ns.DB.tabbed then
+            f:Hide()
+        elseif ns.DB.closeAllTabs then
+            ns.CloseAllWindows() -- X closes the whole tabbed window (Settings > General)
+        else
+            ns.CloseTab(f.key)
+        end
     end)
 
     local minBtn = FlatButton(f, "-", { bare = true, width = 20, height = 20, font = "GameFontHighlight" })
@@ -1097,6 +1103,7 @@ ns.ApplyPosition = ApplyPosition
 ns.LayoutButtons = LayoutButtons
 ns.UpdateTitle = UpdateTitle
 ns.StartFlash = StartFlash
+ns.StopFlash = StopFlash
 ns.FillMessages = FillMessages
 ns.RecolorAll = RecolorAll
 ns.GetWindow = GetWindow

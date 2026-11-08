@@ -480,11 +480,11 @@ local function CreateHistory()
                 self.view:AddMessage(DayHeader(e.t))
                 lastDay = day
             end
-            local line = FormatEntry(key, e)
+            local text = FormatEntry(key, e)
             if q ~= "" and e.m:lower():find(q, 1, true) then
-                line = "|cffffd100>|r " .. line   -- mark search hits
+                text = "|cffffd100>|r " .. text   -- mark search hits
             end
-            self.view:AddMessage(line)
+            self.view:AddMessage(text)
         end
         self.view:ScrollToBottom()
     end

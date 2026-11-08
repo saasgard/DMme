@@ -94,6 +94,17 @@ local function ClearSession()
     for _, key in ipairs(SessionKeys()) do RemoveSession(key) end
 end
 
+-- Mark every conversation as read (clears badges, glows and tab markers)
+-- without closing anything or removing it from the list.
+local function ClearAllUnread()
+    for _, f in pairs(windows) do
+        if (f.unread or 0) > 0 then ns.StopFlash(f) end
+    end
+    for _, s in pairs(ns.session) do s.unread = nil end
+    if ns.DB.tabbed and ns.RefreshTabs then ns.RefreshTabs() end
+    ns.UpdateSessionUI()
+end
+
 local function CreateSessionPanel()
     local p = CreateFrame("Frame", "DMmeSessionList", UIParent, BACKDROP_TEMPLATE)
     p:SetWidth(290)
@@ -427,6 +438,9 @@ local function ShowSessionTooltip(owner, anchorPoint, isMinimapButton)
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine("|cffffd100Left-click|r  whispers and online friends", 0.8, 0.8, 0.8)
     GameTooltip:AddLine("|cffffd100Right-click|r  settings", 0.8, 0.8, 0.8)
+    -- the addon menu (compartment) may not pass middle clicks, so only promise Shift-click there
+    GameTooltip:AddLine("|cffffd100" .. (isMinimapButton and "Middle- or Shift-click" or "Shift-click")
+        .. "|r  mark all as read", 0.8, 0.8, 0.8)
     if isMinimapButton == "float" then
         if ns.DB.floatButton.locked then
             GameTooltip:AddLine("Locked (unlock in Settings > General)", 0.6, 0.6, 0.65)
@@ -508,7 +522,7 @@ local function BuildDMmeButton(name, parent)
     b:SetSize(31, 31)
     b:SetFrameStrata("MEDIUM")
     b:SetFrameLevel(8)
-    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
     b:RegisterForDrag("LeftButton")
     b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 
@@ -579,7 +593,13 @@ local function BuildDMmeButton(name, parent)
     b.pop = pop
 
     b:SetScript("OnClick", function(self, button)
-        if button == "RightButton" then ns.ShowSettings() else ToggleSessionPanel(self) end
+        if button == "MiddleButton" or (button == "LeftButton" and IsShiftKeyDown()) then
+            ClearAllUnread()
+        elseif button == "RightButton" then
+            ns.ShowSettings()
+        else
+            ToggleSessionPanel(self)
+        end
     end)
     b:SetMovable(true)
     b:SetClampedToScreen(true)
@@ -737,6 +757,7 @@ end
 -- shared with the files after this one (see their 'from earlier files')
 ns.ShowSessionTooltip = ShowSessionTooltip
 ns.ToggleSessionPanel = ToggleSessionPanel
+ns.ClearAllUnread = ClearAllUnread
 ns.SetMinimapDetached = SetMinimapDetached
 ns.SetMinimapShown = SetMinimapShown
 ns.SetFloatShown = SetFloatShown

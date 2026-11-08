@@ -41,7 +41,7 @@ Need a break from someone? Right-click their name and choose **Mute whispers** f
 Names, messages and tabs use each player's class color. Click **Who** to fill in the window header with their level, race, class and guild. Hover over the name for the full details.
 
 **Never miss a message**
-The minimap button glows and shows how many conversations are waiting for you. Click it for a list of everyone you've talked to this session, with their last message. The list stays through `/reload` and clears when you log out.
+The minimap button glows and shows how many conversations are waiting for you. Click it for a list of everyone you've talked to this session, with their last message. Middle-click or Shift-click it to mark everything as read. The list stays through `/reload` and clears when you log out.
 
 **A button you can put anywhere**
 Does your minimap addon collect every button into a bag? Turn on the floating DMme button, drag it where you like and resize it with Ctrl + mouse wheel. It's off by default.
@@ -50,7 +50,7 @@ Does your minimap addon collect every button into a bag? Turn on the floating DM
 Turn on history to save your whispers between sessions. You can browse, search and copy them later in the History window, and choose how long to keep them: a day, a week, a month, a year or forever. It's off by default.
 
 **Make it yours**
-Settings are split into General, Look, Chat and History tabs. Choose tabs or separate windows, the whisper sound, window size and colors. Pick which quick buttons each window shows: Party Invite, Who, History, Quick replies, plus an optional Guild Invite shortcut. You can also hide whispers from your main chat. On Retail, DMme is also in the addon menu by the minimap.
+Settings are split into General, Look, Chat and History tabs. Choose tabs or separate windows (and whether the X closes one tab or all of them), the whisper sound, window size and colors. Pick which quick buttons each window shows: Party Invite, Who, History, Quick replies, plus an optional Guild Invite shortcut. You can also hide whispers from your main chat. On Retail, DMme is also in the addon menu by the minimap.
 
 ## Commands
 
@@ -59,6 +59,7 @@ Settings are split into General, Look, Chat and History tabs. Choose tabs or sep
 | `/dm` | Open settings |
 | `/dm open <name>` | Start a conversation with someone |
 | `/dm list` | Show this session's conversations |
+| `/dm read` | Mark all whispers as read |
 | `/dm friends` | Show online friends, click one to chat |
 | `/dm history` | Browse saved conversations |
 | `/dm mute <name> [1h\|24h\|week\|month\|forever]` | Mute someone's whispers |

@@ -1,0 +1,15 @@
+# Runs luacheck (settings in .luacheckrc) on every push and pull request.
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  luacheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run luacheck
+        uses: lunarmodules/luacheck@v1

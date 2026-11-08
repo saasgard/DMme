@@ -436,6 +436,8 @@ local function CreateSettings()
     Section("Windows")
     Check("Tabbed window", "Put all whisper conversations in one window with a tab per player.\nRight-click a tab to close it.",
         function() return ns.DB.tabbed end, SetTabbed)
+    Check("X closes all tabs", "With the tabbed window, the X closes every tab at once\ninstead of just the one you're looking at.\nYour whispers stay in the whisper list.",
+        function() return ns.DB.closeAllTabs end, function(v) ns.DB.closeAllTabs = v end)
     Check("Open automatically on new whisper", nil,
         function() return ns.DB.autoOpen end, function(v) ns.DB.autoOpen = v end)
     Check("Wait until combat ends to open", "In combat, new whisper windows don't pop open in your face.\nThey open as soon as combat ends. You still hear the sound\nand see the minimap badge.",
@@ -751,6 +753,9 @@ SlashCmdList.DMME = function(input)
         Print("Window positions reset.")
     elseif cmd == "closeall" then
         CloseAllWindows()
+    elseif cmd == "read" then
+        ns.ClearAllUnread()
+        Print("All whispers marked as read.")
     elseif cmd == "theme" then
         -- /dm theme dark|forever|midnight  (no name = next theme)
         local names = { dark = "modern", modern = "modern", flat = "modern",
@@ -769,6 +774,7 @@ SlashCmdList.DMME = function(input)
         Print("  /dm tabs - toggle tabbed window (now " .. (ns.DB.tabbed and "ON" or "OFF") .. ")")
         Print("  /dm list - this session's whispers")
         Print("  /dm friends - online friends (click one to chat)")
+        Print("  /dm read - mark all whispers as read")
         Print("  /dm minimap - show/hide the minimap button")
         Print("  /dm detach - detach/attach the minimap button")
         Print("  /dm button [size|reset] - floating button: show/hide, resize, or reset")
@@ -795,7 +801,9 @@ end
 ----------------------------------------------------------------------
 function DMme_OnAddonCompartmentClick(_, mouseButton, menuButtonFrame)
     if not ns.DB then return end
-    if mouseButton == "RightButton" then
+    if mouseButton == "MiddleButton" or (mouseButton == "LeftButton" and IsShiftKeyDown()) then
+        ns.ClearAllUnread()
+    elseif mouseButton == "RightButton" then
         ns.ShowSettings()
     else
         ToggleSessionPanel(menuButtonFrame)

@@ -22,6 +22,7 @@ local defaults = {
     width = 380,
     height = 260,
     tabbed = true,        -- all conversations in one window with tabs
+    closeAllTabs = false, -- tabbed: the X closes every tab, not just the current one
     buttons = {           -- which action buttons show in the whisper window
         guild = false,    -- Guild Invite is OFF by default
         party = true,
