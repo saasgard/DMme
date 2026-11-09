@@ -426,6 +426,7 @@ local function AddLine(key, text, incoming, guid)
     end
 
     local wasAtBottom = f.msg:AtBottom()
+    ns.DayBreak(f, entry.t) -- divider if this is the first message of a new day
     f.msg:AddMessage(FormatEntry(key, entry))
 
     if incoming then

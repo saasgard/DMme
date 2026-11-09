@@ -5,7 +5,9 @@ local ADDON, ns = ...
 
 -- from earlier files (these never change after loading)
 local BACKDROP_TEMPLATE = ns.BACKDROP_TEMPLATE
+local BNInfo = ns.BNInfo
 local BNKeyFromID = ns.BNKeyFromID
+local BNResolve = ns.BNResolve
 local C = ns.C
 local ClassFileFromName = ns.ClassFileFromName
 local ClassRGB = ns.ClassRGB
@@ -26,6 +28,7 @@ local OnTheme = ns.OnTheme
 local OnUIAccent = ns.OnUIAccent
 local ShortName = ns.ShortName
 local ShowPlayerMenu = ns.ShowPlayerMenu
+local ShowTooltip = ns.ShowTooltip
 local Skin = ns.Skin
 local SkinHeader = ns.SkinHeader
 local UIAccent = ns.UIAccent
@@ -45,11 +48,49 @@ local function IsActiveConversation(key)
     return f and f:IsShown() or false
 end
 
+-- This session's conversations: unread ones first, then newest first.
 local function SessionKeys()
-    local list = {}
-    for key in pairs(ns.session) do list[#list + 1] = key end
-    table.sort(list, function(a, b) return ns.session[a].t > ns.session[b].t end)
+    local list, unread = {}, {}
+    for key in pairs(ns.session) do
+        list[#list + 1] = key
+        unread[key] = KeyUnread(key) > 0
+    end
+    table.sort(list, function(a, b)
+        if unread[a] ~= unread[b] then return unread[a] end
+        return ns.session[a].t > ns.session[b].t
+    end)
     return list
+end
+
+-- Who is online, for the dot on a player's icon: [key] = true / false for
+-- guild members and character friends (anyone else: unknown, no dot).
+local function OnlineMap()
+    local map = {}
+    if IsInGuild and IsInGuild() and GetNumGuildMembers and GetGuildRosterInfo then
+        for i = 1, (GetNumGuildMembers() or 0) do
+            local name, _, _, _, _, _, _, _, online = GetGuildRosterInfo(i)
+            local key = name and FullName(name)
+            if key then map[key] = online and true or false end
+        end
+    end
+    if C_FriendList and C_FriendList.GetNumFriends and C_FriendList.GetFriendInfoByIndex then
+        for i = 1, (C_FriendList.GetNumFriends() or 0) do
+            local info = C_FriendList.GetFriendInfoByIndex(i)
+            local key = info and info.name and FullName(info.name)
+            if key then map[key] = info.connected and true or false end
+        end
+    end
+    return map
+end
+
+-- true / false, or nil when unknown. Battle.net friends: online in any game or app.
+local function IsOnline(key, map)
+    if IsBN(key) then
+        local info = BNInfo(BNResolve(key))
+        local ga = info and info.gameAccountInfo
+        return (info and not (ga and ga.isOnline == false)) and true or false
+    end
+    return map[key]
 end
 
 -- Number of conversations (windows/tabs) that have unread whispers.
@@ -107,7 +148,7 @@ end
 
 local function CreateSessionPanel()
     local p = CreateFrame("Frame", "DMmeSessionList", UIParent, BACKDROP_TEMPLATE)
-    p:SetWidth(290)
+    p:SetWidth(340) -- room for Recent, Friends, Open new, Clear all
     Skin(p, "window")
     p:SetFrameStrata("DIALOG")
     p:SetToplevel(true)
@@ -137,29 +178,45 @@ local function CreateSessionPanel()
     -- The Friends tab lets you start a chat without going through Blizzard's
     -- Friends list menu (DMme can't add to that menu without tainting it).
     local tabs = {}
+    -- Flat text tabs with an accent underline on the selected one (so they
+    -- don't look like the action buttons next to them).
     local function StyleTabs()
         for _, t in ipairs(tabs) do
-            if t.mode == p.mode then
-                t:SetBackdropColor(unpack(C.buttonHi))
-                t:SetBackdropBorderColor(UIAccent())
+            local on = t.mode == p.mode
+            t.underline:SetShown(on)
+            if on then
                 t.label:SetTextColor(1, 1, 1)
+            elseif t:IsMouseOver() then
+                t.label:SetTextColor(0.85, 0.85, 0.9)
             else
-                t:SetBackdropColor(unpack(C.button))
-                t:SetBackdropBorderColor(unpack(C.border))
-                t.label:SetTextColor(unpack(C.btnText))
+                t.label:SetTextColor(unpack(C.muted))
             end
         end
     end
     local function Tab(mode, text, tip)
-        local t = FlatButton(p, text, { width = 74, tooltip = text, tooltipText = tip })
+        local t = CreateFrame("Button", nil, p)
+        t:SetSize(74, 22)
         t.mode = mode
+        t.label = t:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        t.label:SetPoint("CENTER", 0, 1)
+        t.label:SetText(text)
+        t.underline = t:CreateTexture(nil, "ARTWORK")
+        t.underline:SetTexture(WHITE)
+        t.underline:SetHeight(2)
+        t.underline:SetPoint("BOTTOMLEFT", 8, 0)
+        t.underline:SetPoint("BOTTOMRIGHT", -8, 0)
+        OnUIAccent(function(r, g, b) t.underline:SetVertexColor(r, g, b, 1) end)
         t:SetScript("OnClick", function()
             p.mode = mode
             ns.DB.listMode = mode
             p.offset = 0
             p:Refresh()
         end)
-        t:HookScript("OnLeave", StyleTabs)
+        t:SetScript("OnEnter", function(self)
+            StyleTabs()
+            ShowTooltip(self, text, tip)
+        end)
+        t:SetScript("OnLeave", function() StyleTabs(); GameTooltip:Hide() end)
         tabs[#tabs + 1] = t
         return t
     end
@@ -178,6 +235,26 @@ local function CreateSessionPanel()
         tooltip = "Clear all", tooltipText = "Remove every conversation from this list and close their windows.\n(Saved history is not deleted.)" })
     clear:SetPoint("RIGHT", close, "LEFT", -4, 0)
     clear:SetScript("OnClick", ClearSession)
+
+    -- open every conversation with unread whispers (shown when there are some)
+    local openNew = FlatButton(p, "Open new", { tooltip = "Open new",
+        tooltipText = "Open every conversation with unread whispers." })
+    openNew:SetPoint("RIGHT", clear, "LEFT", -4, 0)
+    openNew:SetScript("OnClick", function()
+        local first
+        for _, key in ipairs(SessionKeys()) do
+            if KeyUnread(key) > 0 then
+                if ns.DB.tabbed then
+                    ns.AddTab(key)
+                    first = first or key
+                else
+                    ns.OpenWindow(key)
+                end
+            end
+        end
+        if first then ns.ActivateTab(first) end -- show the newest one
+        p:Hide()
+    end)
 
     p.empty = p:CreateFontString(nil, "OVERLAY", "GameFontDisable")
     p.empty:SetPoint("TOP", 0, -48)
@@ -274,6 +351,12 @@ local function CreateSessionPanel()
         r.icon:SetSize(22, 22)
         r.icon:SetPoint("LEFT", 8, 0)
 
+        -- online (green) / offline (grey) dot, when DMme can tell
+        r.dot = r:CreateTexture(nil, "OVERLAY")
+        r.dot:SetSize(10, 10)
+        r.dot:SetPoint("CENTER", r.icon, "BOTTOMRIGHT", -2, 2)
+        r.dot:Hide()
+
         r.del = FlatButton(r, "x", { bare = true, width = 18, height = 18, hoverColor = { 0.9, 0.25, 0.25 },
             tooltip = "Remove", tooltipText = "Remove from this list and close the conversation." })
         r.del:SetPoint("RIGHT", -2, 0)
@@ -306,7 +389,15 @@ local function CreateSessionPanel()
             if button == "RightButton" then
                 ShowPlayerMenu(self.key)
             else
-                ns.OpenWindow(self.key); p:Hide()
+                if IsShiftKeyDown() then
+                    -- Shift-click: keep the list open to open several in a row;
+                    -- with tabs they open in the background
+                    if ns.DB.tabbed then ns.AddTab(self.key) else ns.OpenWindow(self.key) end
+                    p:Raise()
+                else
+                    ns.OpenWindow(self.key)
+                    p:Hide()
+                end
             end
         end)
         p.rows[i] = r
@@ -345,6 +436,7 @@ local function CreateSessionPanel()
             local e = list[self.offset + i]
             r.key = e and e.key
             r.del:Hide()
+            r.dot:Hide() -- everyone here is online
             if e then
                 if e.isBN then
                     r.name:SetText(Colorize(e.name, C.bn[1], C.bn[2], C.bn[3]))
@@ -368,6 +460,7 @@ local function CreateSessionPanel()
 
     function p:Refresh()
         clear:SetShown(self.mode == "recent")
+        openNew:SetShown(self.mode == "recent" and UnreadConversations() > 0)
         StyleTabs()
         local shown
         if self.mode == "friends" then
@@ -378,6 +471,7 @@ local function CreateSessionPanel()
         friendsTab.label:SetText("Friends")
         self.empty:SetText("No whispers yet this session.")
         local keys = SessionKeys()
+        local online = OnlineMap()
         self.count = #keys
         self.offset = math.min(self.offset, math.max(0, #keys - LIST_ROWS))
         shown = math.min(#keys, LIST_ROWS)
@@ -402,6 +496,13 @@ local function CreateSessionPanel()
                 local unread = KeyUnread(key)
                 r.badge:SetText(unread > 0 and KeyColorize(key, unread .. " new") or "")
                 r.bar:SetShown(IsActiveConversation(key))
+                local on = IsOnline(key, online)
+                if on == nil then
+                    r.dot:Hide()
+                else
+                    r.dot:SetTexture(on and "Interface\\COMMON\\Indicator-Green" or "Interface\\COMMON\\Indicator-Gray")
+                    r.dot:Show()
+                end
                 if IsBN(key) then
                     SetIcon(r, true, nil) -- Battle.net icon (as before)
                 else

@@ -23,6 +23,8 @@ local defaults = {
     height = 260,
     tabbed = true,        -- all conversations in one window with tabs
     closeAllTabs = false, -- tabbed: the X closes every tab, not just the current one
+    actionIcons = true,   -- whisper window actions as small icons in the header (off: a row of text buttons)
+    compact = false,      -- smaller header and padding in whisper windows and tabs
     buttons = {           -- which action buttons show in the whisper window
         guild = false,    -- Guild Invite is OFF by default
         party = true,
@@ -748,13 +750,15 @@ end
 -- Header band of a window. `bottom` = distance from the top of the frame to
 -- the header's bottom edge; in the classic theme it sits inside the dialog
 -- border instead of touching the frame edge.
+-- `bottom` can be a function (whisper windows: it changes with compact mode).
 local function SkinHeader(header, bottom)
     OnTheme(function(classic)
         local pad = classic and 5 or 1
+        header.pad = pad
         header:ClearAllPoints()
         header:SetPoint("TOPLEFT", pad, -pad)
         header:SetPoint("TOPRIGHT", -pad, -pad)
-        header:SetHeight(bottom - pad)
+        header:SetHeight((type(bottom) == "function" and bottom() or bottom) - pad)
         SetGradientV(header, C.header, C.header2)
     end)
 end

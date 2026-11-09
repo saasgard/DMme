@@ -24,6 +24,7 @@ local KeyColorize = ns.KeyColorize
 local KeyHighlight = ns.KeyHighlight
 local KeyInfo = ns.KeyInfo
 local KeyRGB = ns.KeyRGB
+local KeyUnread = ns.KeyUnread
 local MEDIA_GEAR = ns.MEDIA_GEAR
 local OnTheme = ns.OnTheme
 local PartyInviteName = ns.PartyInviteName
@@ -88,6 +89,29 @@ local function FlatButton(parent, text, opts)
     end)
     b:SetScript("OnMouseDown", function(self) self.label:SetPoint("CENTER", 1, -1) end)
     b:SetScript("OnMouseUp", function(self) self.label:SetPoint("CENTER", 0, 0) end)
+    return b
+end
+
+-- Small icon button for a whisper window's header: grey until hovered,
+-- then full colour with a tooltip (like the gear). `f` is the window.
+local function IconButton(f, texture, title, tip, onClick, id)
+    local b = CreateFrame("Button", nil, f)
+    b:SetSize(16, 16)
+    b.id = id
+    local t = b:CreateTexture(nil, "ARTWORK")
+    t:SetAllPoints()
+    t:SetTexture(texture)
+    t:SetDesaturated(true)
+    t:SetAlpha(0.75)
+    b:SetScript("OnEnter", function(self)
+        t:SetDesaturated(false); t:SetAlpha(1)
+        ShowTooltip(self, title, tip)
+    end)
+    b:SetScript("OnLeave", function() t:SetDesaturated(true); t:SetAlpha(0.75); GameTooltip:Hide() end)
+    b:SetScript("OnMouseDown", function() t:SetPoint("TOPLEFT", 1, -1); t:SetPoint("BOTTOMRIGHT", 1, -1) end)
+    b:SetScript("OnMouseUp", function() t:SetPoint("TOPLEFT", 0, 0); t:SetPoint("BOTTOMRIGHT", 0, 0) end)
+    b:SetScript("OnClick", onClick)
+    b:Hide()
     return b
 end
 
@@ -271,10 +295,14 @@ end
 local function ToggleReplies(f, anchor)
     local m = ns.replyMenu or CreateReplyMenu()
     if m:IsShown() and m.owner == f then m:Hide(); return end
-    m.owner = f
+    m.owner, m.anchor = f, anchor
     m:SetScale(ns.DB.scale or 1)
     m:ClearAllPoints()
-    m:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
+    if anchor:GetParent() == f then
+        m:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 4, -6) -- header icon (right side of the window)
+    else
+        m:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
+    end
     m:Refresh()
     m:Show()
     m:Raise()
@@ -329,7 +357,7 @@ end
 function Emoji.TogglePicker(f, anchor)
     local p = Emoji.picker or Emoji.CreatePicker()
     if p:IsShown() and p.owner == f then p:Hide(); return end
-    p.owner = f
+    p.owner, p.anchor = f, anchor
     p:SetScale(ns.DB.scale or 1)
     p:ClearAllPoints()
     p:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", 4, 4)
@@ -350,6 +378,10 @@ end
 ----------------------------------------------------------------------
 -- Window
 ----------------------------------------------------------------------
+-- Compact mode (Settings > Look): smaller header and less padding.
+local COMPACT_HEADER_H = 26
+local function HeaderH() return ns.DB.compact and COMPACT_HEADER_H or HEADER_H end
+
 local function SavePosition(f)
     local point, _, _, x, y = f:GetPoint(1)
     if not point then return end
@@ -378,32 +410,97 @@ local function ApplyPosition(f)
     f:SetWidth(w)
     if f.minimized then
         f.restoreHeight = h
-        f:SetHeight(HEADER_H)
+        f:SetHeight(HeaderH())
     else
         f:SetHeight(h)
     end
 end
 
--- Show/hide action buttons according to the settings and re-flow them.
+-- Lay out a whisper window: header size (compact mode), action buttons
+-- (a row of text buttons under the header, or icons in the header next to
+-- the gear) and the message / input areas. Called on creation and whenever
+-- one of those settings changes.
 local function LayoutButtons(f)
-    local prev
-    for _, btn in ipairs(f.actionButtons) do
-        if ns.DB.buttons[btn.id] then
+    local compact = ns.DB.compact
+    local hh = HeaderH()
+    local pad = compact and 4 or 8
+
+    -- header
+    f.header:SetHeight(hh - 1 - (f.header.pad or 1))
+    if f.minimized then f:SetHeight(hh) end
+    local ring = compact and 18 or 24
+    f.iconRing:SetSize(ring, ring)
+    f.iconRing:ClearAllPoints()
+    f.iconRing:SetPoint("LEFT", f, "TOPLEFT", 6, -(hh / 2))
+    f.close:ClearAllPoints()
+    f.close:SetPoint("RIGHT", f, "TOPRIGHT", -6, -(hh / 2))
+    f.body:ClearAllPoints()
+    f.body:SetPoint("TOPLEFT", 0, -hh)
+    f.body:SetPoint("BOTTOMRIGHT", 0, 0)
+
+    -- action buttons
+    local icons = ns.DB.actionIcons
+    local prevText, prevIcon, iconsW = nil, f.gear, 0
+    for i, btn in ipairs(f.actionButtons) do
+        local on = ns.DB.buttons[btn.id]
+        btn:SetShown(on and not icons)
+        if on and not icons then
             btn:ClearAllPoints()
-            if prev then
-                btn:SetPoint("LEFT", prev, "RIGHT", 4, 0)
+            if prevText then
+                btn:SetPoint("LEFT", prevText, "RIGHT", 4, 0)
             else
-                btn:SetPoint("TOPLEFT", f.body, "TOPLEFT", 8, -7)
+                btn:SetPoint("TOPLEFT", f.body, "TOPLEFT", pad, compact and -4 or -7)
             end
-            btn:Show()
-            prev = btn
-        else
-            btn:Hide()
+            prevText = btn
+        end
+        f.actionIcons[i]:Hide()
+    end
+    if icons then
+        -- right to left from the gear, so they read in the same order as the text buttons
+        for i = #f.actionIcons, 1, -1 do
+            local ib = f.actionIcons[i]
+            if ns.DB.buttons[ib.id] then
+                ib:ClearAllPoints()
+                ib:SetPoint("RIGHT", prevIcon, "LEFT", -5, 0)
+                ib:Show()
+                prevIcon = ib
+                iconsW = iconsW + 21
+            end
         end
     end
+
+    -- name and subtitle stop before the header buttons (one line each, cut
+    -- off with "..." when too long, so they never run into anything)
+    local right = -(76 + iconsW)
+    f.title:ClearAllPoints()
+    f.subtitle:ClearAllPoints()
+    f.subtitle:SetPoint("BOTTOMLEFT", f.iconRing, "BOTTOMRIGHT", 7, 0)
+    f.subtitle:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", right, -(hh / 2 + ring / 2))
+    if compact then
+        -- one line: just the name, centred in the header (details are in its tooltip)
+        f.title:SetPoint("LEFT", f.iconRing, "RIGHT", 7, 0)
+        f.title:SetPoint("RIGHT", f, "TOPRIGHT", right, -(hh / 2))
+        f.subtitle:Hide()
+    else
+        f.title:SetPoint("TOPLEFT", f.iconRing, "TOPRIGHT", 7, 0)
+        f.title:SetPoint("TOPRIGHT", f, "TOPRIGHT", right, -(hh / 2 - ring / 2))
+        f.subtitle:Show()
+    end
+
+    -- message area and input box
+    local inputH = compact and 20 or 24
+    local gap = compact and 4 or 6
     f.inset:ClearAllPoints()
-    f.inset:SetPoint("TOPLEFT", f.body, "TOPLEFT", 8, prev and -33 or -8)
-    f.inset:SetPoint("BOTTOMRIGHT", f.body, "BOTTOMRIGHT", -8, 38)
+    f.inset:SetPoint("TOPLEFT", f.body, "TOPLEFT", pad, prevText and (compact and -28 or -33) or -pad)
+    f.inset:SetPoint("BOTTOMRIGHT", f.body, "BOTTOMRIGHT", -pad, pad + inputH + gap)
+    local mx, my = compact and 4 or 7, compact and 3 or 6
+    f.msg:ClearAllPoints()
+    f.msg:SetPoint("TOPLEFT", mx, -my)
+    f.msg:SetPoint("BOTTOMRIGHT", -mx, my)
+    f.inputBox:ClearAllPoints()
+    f.inputBox:SetPoint("BOTTOMLEFT", pad, pad)
+    f.inputBox:SetPoint("BOTTOMRIGHT", -(pad + 16), pad)
+    f.inputBox:SetHeight(inputH)
 end
 
 local function UpdateTitle(f)
@@ -489,7 +586,7 @@ local function SetMinimized(f, minimized)
     if minimized then
         f.restoreHeight = f:GetHeight()
         f.body:Hide()
-        f:SetHeight(HEADER_H)
+        f:SetHeight(HeaderH())
         f.minBtn.label:SetText("+")
     else
         f.body:Show()
@@ -504,9 +601,30 @@ end
 -- (Re)draw a window's messages: this session's messages (kept across /reload)
 -- and, before them, the last few saved history messages (dimmed) when logging is on.
 -- Called on creation and whenever colours change (setting toggled, class learned).
+-- "Today", "Yesterday" or the date, for the line between days.
+local function DayLabel(t)
+    local d = date("%Y%m%d", t)
+    if d == date("%Y%m%d") then return "Today" end
+    if d == date("%Y%m%d", time() - 86400) then return "Yesterday" end
+    return date("%a %d %b", t)
+end
+
+-- Add a faint divider to window f when message time t is on a different
+-- day than the message before it (none above today's first message).
+local function DayBreak(f, t)
+    t = t or time()
+    local d = date("%Y%m%d", t)
+    if d == f.lastDay then return end
+    if f.lastDay or d ~= date("%Y%m%d") then
+        f.msg:AddMessage("|cff4a4a55-------------  " .. DayLabel(t) .. "  -------------|r")
+    end
+    f.lastDay = d
+end
+
 local function FillMessages(f)
     local key, msg = f.key, f.msg
     msg:Clear()
+    f.lastDay = nil
     local s = ns.session[key]
     local lines = s and s.lines
     local sessionStart = lines and lines[1] and lines[1].t or math.huge
@@ -518,13 +636,17 @@ local function FillMessages(f)
         end
         if #older > 0 then
             for j = math.max(1, #older - 29), #older do
+                DayBreak(f, older[j].t)
                 msg:AddMessage(FormatEntry(key, older[j], true))
             end
             msg:AddMessage("|cff4a4a55-------------  earlier  -------------|r")
         end
     end
     if lines then
-        for _, e in ipairs(lines) do msg:AddMessage(FormatEntry(key, e)) end
+        for _, e in ipairs(lines) do
+            DayBreak(f, e.t)
+            msg:AddMessage(FormatEntry(key, e))
+        end
     end
     msg:ScrollToBottom()
     -- after Clear() + refill the frame can keep stale line positions until it
@@ -627,7 +749,8 @@ local function CreateWindow(key)
     -- Header
     ------------------------------------------------------------------
     local header = f:CreateTexture(nil, "BORDER")
-    SkinHeader(header, HEADER_H - 1)
+    SkinHeader(header, function() return HeaderH() - 1 end)
+    f.header = header
 
     local accentLine = f:CreateTexture(nil, "ARTWORK")
     accentLine:SetTexture(WHITE)
@@ -637,8 +760,7 @@ local function CreateWindow(key)
     f.accentLine = accentLine
 
     local iconRing = CreateFrame("Frame", nil, f, BACKDROP_TEMPLATE)
-    iconRing:SetSize(24, 24)
-    iconRing:SetPoint("LEFT", f, "TOPLEFT", 6, -(HEADER_H / 2))
+    iconRing:SetSize(24, 24) -- size and place: LayoutButtons
     iconRing:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
     iconRing:SetBackdropColor(0, 0, 0, 1)
     f.iconRing = iconRing
@@ -648,18 +770,14 @@ local function CreateWindow(key)
     f.icon = icon
 
     f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    f.title:SetPoint("TOPLEFT", iconRing, "TOPRIGHT", 7, 0)
-    f.title:SetPoint("RIGHT", f, "RIGHT", -76, 0)
-    f.title:SetJustifyH("LEFT")
+    f.title:SetJustifyH("LEFT") -- placed by LayoutButtons
     -- single line, cut off with "..." instead of wrapping over the other line
     f.title:SetHeight(14)
     f.title:SetWordWrap(false)
     if f.title.SetMaxLines then f.title:SetMaxLines(1) end
 
     f.subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    f.subtitle:SetPoint("BOTTOMLEFT", iconRing, "BOTTOMRIGHT", 7, 0)
-    f.subtitle:SetPoint("RIGHT", f, "RIGHT", -76, 0)
-    f.subtitle:SetJustifyH("LEFT")
+    f.subtitle:SetJustifyH("LEFT") -- placed by LayoutButtons
     f.subtitle:SetTextColor(unpack(C.muted))
     f.subtitle:SetHeight(11)
     f.subtitle:SetWordWrap(false)
@@ -704,7 +822,7 @@ local function CreateWindow(key)
 
     local close = FlatButton(f, "x", { bare = true, width = 20, height = 20,
         font = "GameFontHighlight", hoverColor = { 0.9, 0.25, 0.25 } })
-    close:SetPoint("TOPRIGHT", -6, -7)
+    f.close = close -- placed by LayoutButtons
     close:SetScript("OnClick", function()
         if not ns.DB.tabbed then
             f:Hide()
@@ -737,44 +855,43 @@ local function CreateWindow(key)
     gear:SetScript("OnMouseDown", function() gtex:SetPoint("TOPLEFT", 1, -1); gtex:SetPoint("BOTTOMRIGHT", 1, -1) end)
     gear:SetScript("OnMouseUp", function() gtex:SetPoint("TOPLEFT", 0, 0); gtex:SetPoint("BOTTOMRIGHT", 0, 0) end)
     gear:SetScript("OnClick", function() ns.ShowSettings() end)
+    f.gear = gear
 
     ------------------------------------------------------------------
     -- Body (hidden when minimised)
     ------------------------------------------------------------------
-    local body = CreateFrame("Frame", nil, f)
-    body:SetPoint("TOPLEFT", 0, -HEADER_H)
-    body:SetPoint("BOTTOMRIGHT", 0, 0)
+    local body = CreateFrame("Frame", nil, f) -- placed by LayoutButtons
     f.body = body
 
-    -- Action bar
+    -- Action buttons: text buttons in a row under the header, or the same
+    -- actions as small icons in the header (Settings > Look > Window buttons)
     local actions = {
-        { "guild", "Guild Invite", "Guild Invite", "Shows the /ginvite command ready to copy and paste in chat.\n(The game only allows guild invites you send yourself.)", function() GuildInviteName(f.key) end },
-        { "party", "Invite", "Party Invite", "Invite this player to your group.", function() PartyInviteName(f.key) end },
-        { "who", "Who", "Who", "Look up level, class and zone.", function() WhoName(f.key) end },
-        { "history", "History", "Whisper History", "Browse saved whispers with this player.", function() ns.ShowHistory(f.key) end },
-        { "replies", "Replies", "Quick replies", "Send a saved reply with one click,\nor save what you have typed for next time.", function(self) ToggleReplies(f, self) end },
+        { "guild", "Guild Invite", "Guild Invite", "Shows the /ginvite command ready to copy and paste in chat.\n(The game only allows guild invites you send yourself.)", function() GuildInviteName(f.key) end, "Interface\\GossipFrame\\TabardGossipIcon" },
+        { "party", "Invite", "Party Invite", "Invite this player to your group.", function() PartyInviteName(f.key) end, "Interface\\GossipFrame\\BattleMasterGossipIcon" },
+        { "who", "Who", "Who", "Look up level, class and zone.", function() WhoName(f.key) end, "Interface\\Common\\UI-Searchbox-Icon" },
+        { "history", "History", "Whisper History", "Browse saved whispers with this player.", function() ns.ShowHistory(f.key) end, "Interface\\GossipFrame\\PetitionGossipIcon" },
+        { "replies", "Replies", "Quick replies", "Send a saved reply with one click,\nor save what you have typed for next time.", function(self) ToggleReplies(f, self) end, "Interface\\GossipFrame\\GossipGossipIcon" },
     }
+    f.actionIcons = {}
     for _, a in ipairs(actions) do
         local btn = FlatButton(body, a[2], { tooltip = a[3], tooltipText = a[4] })
         btn.id = a[1]
         btn:SetScript("OnClick", a[5])
         f.actionButtons[#f.actionButtons + 1] = btn
+        f.actionIcons[#f.actionIcons + 1] = IconButton(f, a[6], a[3], a[4], a[5], a[1])
     end
 
-    -- Message area inset (anchored by LayoutButtons)
+    -- Message area inset (placed by LayoutButtons)
     local inset = CreateFrame("Frame", nil, body, BACKDROP_TEMPLATE)
     f.inset = inset
-    LayoutButtons(f)
     Skin(inset, "inset")
 
     local msg = CreateFrame("ScrollingMessageFrame", nil, inset)
-    msg:SetPoint("TOPLEFT", 7, -6)
-    msg:SetPoint("BOTTOMRIGHT", -7, 6)
     msg:SetFontObject(msgFont)
     msg:SetJustifyH("LEFT")
     msg:SetFading(false)
     msg:SetMaxLines(500)
-    msg:SetSpacing(2)
+    msg:SetSpacing(3)
     msg:EnableMouse(true)
     if msg.SetIndentedWordWrap then msg:SetIndentedWordWrap(true) end
     if msg.SetHyperlinksEnabled then msg:SetHyperlinksEnabled(true) end
@@ -802,10 +919,7 @@ local function CreateWindow(key)
     end)
 
     -- Input box
-    local inputBox = CreateFrame("Frame", nil, body, BACKDROP_TEMPLATE)
-    inputBox:SetPoint("BOTTOMLEFT", 8, 8)
-    inputBox:SetPoint("BOTTOMRIGHT", -24, 8)
-    inputBox:SetHeight(24)
+    local inputBox = CreateFrame("Frame", nil, body, BACKDROP_TEMPLATE) -- placed by LayoutButtons
     Skin(inputBox, "input")
     f.inputBox = inputBox
 
@@ -879,6 +993,8 @@ local function CreateWindow(key)
 
     -- Escape closes the window
     tinsert(UISpecialFrames, f:GetName())
+
+    LayoutButtons(f)
 
     FillMessages(f)
     -- restore the unread count saved before a /reload
@@ -964,12 +1080,31 @@ local function CloseAllWindows()
     if ns.RefreshTabs then ns.RefreshTabs() end
 end
 
-local function StyleTab(b, hover)
+-- Inside a tab, right to left: the close "x" (only while hovered), the
+-- unread count badge, then the name (cut off with "..." if it doesn't fit).
+local function LayoutTabInner(b)
+    local hover = b.hover
+    b.close:SetShown(hover)
+    local anchor, point, x = b, "RIGHT", -8
+    if hover then anchor, point, x = b.close, "LEFT", -2 end
+    if b.badge:IsShown() then
+        b.badge:ClearAllPoints()
+        b.badge:SetPoint("RIGHT", anchor, point, hover and -1 or -5, 0)
+        anchor, point, x = b.badge, "LEFT", -4
+    end
+    b.label:ClearAllPoints()
+    b.label:SetPoint("LEFT", 8, 0)
+    b.label:SetPoint("RIGHT", anchor, point, x, 0)
+end
+
+local function StyleTab(b)
+    local hover = b.hover
     local f = windows[b.key]
     local active = b.key == ns.activeKey
     local r, g, bl = KeyRGB(b.key)
     local unread = f and f.unread or 0
     local name = ShortName(b.key)
+    b.badge:Hide()
     if active then
         b:SetBackdropColor(unpack(C.tabOn))
         b:SetBackdropBorderColor(unpack(C.border))
@@ -980,11 +1115,45 @@ local function StyleTab(b, hover)
         b:SetBackdropColor(unpack(hover and C.tabHover or C.tabOff))
         b.line:Hide()
         if unread > 0 then
-            b:SetBackdropBorderColor(KeyHighlight(b.key))
-            b.label:SetText(KeyColorize(b.key, name .. " (" .. unread .. ")"))
+            local hr, hg, hb = KeyHighlight(b.key)
+            b:SetBackdropBorderColor(hr, hg, hb, 1)
+            b.label:SetText(KeyColorize(b.key, name))
+            -- unread count as a small badge in the player's colour
+            b.badge.text:SetText(unread > 99 and "99+" or unread)
+            b.badge:SetWidth(math.max(14, b.badge.text:GetStringWidth() + 8))
+            b.badge:SetBackdropColor(hr * 0.7, hg * 0.7, hb * 0.7, 0.95)
+            b.badge:Show()
         else
             b:SetBackdropBorderColor(unpack(C.border))
-            b.label:SetText("|cff9a9aa8" .. name .. "|r")
+            b.label:SetText((hover and "|cffd0d0d8" or "|cff9a9aa8") .. name .. "|r")
+        end
+    end
+    LayoutTabInner(b)
+end
+
+-- Drag to reorder: while a tab is held, it swaps places with the tab the
+-- cursor moves past the middle of.
+local dragKey
+local function StopTabDrag()
+    dragKey = nil
+    if tabStrip then tabStrip:SetScript("OnUpdate", nil) end
+end
+
+local function TabDragUpdate()
+    if not dragKey or not IsMouseButtonDown("LeftButton") then StopTabDrag(); return end
+    local from = IndexOf(tabOrder, dragKey)
+    if not from then StopTabDrag(); return end
+    local cx = GetCursorPosition() / tabStrip:GetEffectiveScale()
+    for i, b in ipairs(tabButtons) do
+        local l, r = b:GetLeft(), b:GetRight()
+        if b:IsShown() and i ~= from and l and cx >= l and cx <= r then
+            local mid = (l + r) / 2
+            if (i > from and cx > mid) or (i < from and cx < mid) then
+                tremove(tabOrder, from)
+                tinsert(tabOrder, i, dragKey)
+                ns.RefreshTabs()
+            end
+            return
         end
     end
 end
@@ -1006,9 +1175,26 @@ local function GetTabButton(i)
         if b.key then StyleTab(b) end
     end)
     b.label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    b.label:SetPoint("LEFT", 8, 0)
-    b.label:SetPoint("RIGHT", -8, 0)
+    b.label:SetJustifyH("LEFT")
     b.label:SetWordWrap(false)
+    -- unread count badge
+    b.badge = CreateFrame("Frame", nil, b, BACKDROP_TEMPLATE)
+    b.badge:SetHeight(13)
+    b.badge:SetBackdrop({ bgFile = WHITE })
+    b.badge.text = b.badge:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.badge.text:SetPoint("CENTER", 0, 0)
+    b.badge:Hide()
+    -- close "x", shown while the mouse is over the tab
+    local function EndHover()
+        if b:IsMouseOver() then return end -- still on the tab (or its x)
+        b.hover = nil
+        StyleTab(b)
+    end
+    b.close = FlatButton(b, "x", { bare = true, width = 14, height = 14, hoverColor = { 0.9, 0.25, 0.25 } })
+    b.close:SetPoint("RIGHT", -3, 0)
+    b.close:SetScript("OnClick", function() ns.CloseTab(b.key) end)
+    b.close:HookScript("OnLeave", EndHover)
+    b.close:Hide()
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
     b:RegisterForDrag("LeftButton")
     b:SetScript("OnClick", function(self, button)
@@ -1019,16 +1205,20 @@ local function GetTabButton(i)
         end
     end)
     b:SetScript("OnEnter", function(self)
-        StyleTab(self, true)
-        ShowTooltip(self, ShortName(self.key), "Left-click: switch\nRight-click: close tab\nDrag: move window")
+        self.hover = true
+        StyleTab(self)
+        ShowTooltip(self, ShortName(self.key),
+            "Left-click: switch\nRight-click or x: close tab\nDrag: reorder tabs\nMouse wheel: next / previous tab")
     end)
-    b:SetScript("OnLeave", function(self) StyleTab(self); GameTooltip:Hide() end)
-    -- dragging a tab moves the whole tabbed window
-    b:SetScript("OnDragStart", function() local f = ActiveFrame(); if f then f:StartMoving() end end)
-    b:SetScript("OnDragStop", function()
-        local f = ActiveFrame()
-        if f then f:StopMovingOrSizing(); SavePosition(f) end
+    b:SetScript("OnLeave", function() GameTooltip:Hide(); EndHover() end)
+    b:SetScript("OnHide", function(self) self.hover = nil end)
+    -- dragging a tab moves it along the strip (drag the window itself to move it)
+    b:SetScript("OnDragStart", function(self)
+        dragKey = self.key
+        GameTooltip:Hide()
+        tabStrip:SetScript("OnUpdate", TabDragUpdate)
     end)
+    b:SetScript("OnDragStop", StopTabDrag)
     tabButtons[i] = b
     return b
 end
@@ -1039,7 +1229,9 @@ end
 -- end of the tab strip). The list shows every conversation.
 ----------------------------------------------------------------------
 local TAB_MENU_AT = 7
+local TAB_MENU_MIN = 4 -- tabs kept on the strip when the list is in use
 local TAB_MENU_ROW_H = 20
+local TAB_MENU_MAX_ROWS = 15 -- taller lists scroll
 local tabMenuBtn, tabMenu
 
 local function CreateTabMenu()
@@ -1080,7 +1272,7 @@ local function CreateTabMenu()
         row.del:SetScript("OnClick", function() ns.CloseTab(row.key) end)
         row:SetScript("OnEnter", function(self)
             self:SetBackdropColor(1, 1, 1, 0.08)
-            ShowTooltip(self, ShortName(self.key), "Left-click: switch\nRight-click: close tab")
+            ShowTooltip(self, ShortName(self.key), "Left-click: switch\nShift-click: switch, keep this list open\nRight-click: close tab")
         end)
         row:SetScript("OnLeave", function(self)
             self:SetBackdropColor(0, 0, 0, 0)
@@ -1088,8 +1280,16 @@ local function CreateTabMenu()
         end)
         row:SetScript("OnClick", function(self, button)
             if button == "LeftButton" then
-                m:Hide()
-                ns.ActivateTab(self.key)
+                if IsShiftKeyDown() then
+                    -- Shift: switch but keep the list open, to go through several
+                    m.keepOpen = true
+                    ns.ActivateTab(self.key)
+                    m.keepOpen = nil
+                    m:Raise()
+                else
+                    m:Hide()
+                    ns.ActivateTab(self.key)
+                end
             else
                 ns.CloseTab(self.key)
             end
@@ -1098,9 +1298,22 @@ local function CreateTabMenu()
         return row
     end
 
+    -- more than TAB_MENU_MAX_ROWS conversations: the list scrolls (mouse wheel)
+    m.offset = 0
+    m.more = m:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    m.more:SetPoint("BOTTOM", 0, 5)
+    m:EnableMouseWheel(true)
+    m:SetScript("OnMouseWheel", function(self, delta)
+        self.offset = self.offset - delta
+        self:Refresh()
+    end)
+
     function m:Refresh()
         local n, w = #tabOrder, 140
-        for i, key in ipairs(tabOrder) do
+        local rows = math.min(n, TAB_MENU_MAX_ROWS)
+        self.offset = math.max(0, math.min(self.offset, n - rows))
+        for i = 1, rows do
+            local key = tabOrder[self.offset + i]
             local row = Row(i)
             row.key = key
             local f = windows[key]
@@ -1119,9 +1332,15 @@ local function CreateTabMenu()
             row.mark:SetShown(key == ns.activeKey)
             row:Show()
         end
-        for i = n + 1, #self.rows do self.rows[i]:Hide() end
+        for i = rows + 1, #self.rows do self.rows[i]:Hide() end
+        local scrolls = n > rows
+        self.more:SetShown(scrolls)
+        if scrolls then
+            self.more:SetText(("Scroll for more  (%d-%d of %d)"):format(self.offset + 1, self.offset + rows, n))
+            w = math.max(w, self.more:GetStringWidth() + 16)
+        end
         self:SetWidth(math.min(w, 260))
-        self:SetHeight(8 + n * TAB_MENU_ROW_H)
+        self:SetHeight(8 + rows * TAB_MENU_ROW_H + (scrolls and 14 or 0))
     end
 
     tabMenu = m
@@ -1134,6 +1353,9 @@ local function ToggleTabMenu()
     m:SetScale(ns.DB.scale or 1)
     m:ClearAllPoints()
     m:SetPoint("TOPRIGHT", tabMenuBtn, "BOTTOMRIGHT", 0, -2)
+    -- start scrolled so the conversation you're on is in view
+    local idx = IndexOf(tabOrder, ns.activeKey) or 1
+    m.offset = math.max(0, idx - TAB_MENU_MAX_ROWS)
     m:Refresh()
     m:Show()
     m:Raise()
@@ -1154,6 +1376,10 @@ local function StyleTabMenuBtn(b, hover)
         b:SetBackdropBorderColor(unpack(C.border))
     end
     local text = #hidden > 0 and ("+" .. #hidden) or "All"
+    if b.arrow then
+        local v = hover and 1 or 0.6
+        b.arrow:SetVertexColor(v, v, v + 0.05)
+    end
     if hl then
         b.label:SetText(KeyColorize(hl, text))
     else
@@ -1167,10 +1393,12 @@ local function GetTabMenuButton()
     b:SetSize(46, 22)
     b.label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     b.label:SetPoint("LEFT", 7, 0)
+    -- small plain chevron: the dropdown-menu arrow (points right), turned to point down
     b.arrow = b:CreateTexture(nil, "ARTWORK")
-    b.arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
-    b.arrow:SetSize(16, 16)
-    b.arrow:SetPoint("RIGHT", -3, 0)
+    b.arrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow")
+    b.arrow:SetTexCoord(0, 1, 1, 1, 0, 0, 1, 0)
+    b.arrow:SetSize(12, 12)
+    b.arrow:SetPoint("RIGHT", -6, 0)
     OnTheme(function(classic)
         b:SetBackdrop(classic and TOOLTIP_BD or FLAT)
         StyleTabMenuBtn(b)
@@ -1199,7 +1427,12 @@ ns.RefreshTabs = function()
         tabStrip = CreateFrame("Frame", nil, UIParent)
         tabStrip:SetHeight(22)
         -- the strip hides with the window (and on a tab switch): take the list with it
-        tabStrip:SetScript("OnHide", function() if tabMenu then tabMenu:Hide() end end)
+        tabStrip:SetScript("OnHide", function()
+            if tabMenu and not tabMenu.keepOpen then tabMenu:Hide() end
+        end)
+        -- mouse wheel over the tabs: next / previous tab
+        tabStrip:EnableMouseWheel(true)
+        tabStrip:SetScript("OnMouseWheel", function(_, delta) ns.CycleTab(-delta) end)
     end
     local host = ActiveFrame()
     if not ns.DB.tabbed or not host or #tabOrder == 0 then
@@ -1211,6 +1444,8 @@ ns.RefreshTabs = function()
     tabStrip:SetPoint("BOTTOMLEFT", host, "TOPLEFT", 0, -1)
     tabStrip:SetPoint("BOTTOMRIGHT", host, "TOPRIGHT", 0, -1)
     tabStrip:SetFrameLevel(host:GetFrameLevel() + 2)
+    local th = ns.DB.compact and 18 or 22 -- tab height (compact mode: lower)
+    tabStrip:SetHeight(th)
     tabStrip:Show()
 
     local n, gap = #tabOrder, 2
@@ -1219,8 +1454,10 @@ ns.RefreshTabs = function()
     for i, key in ipairs(tabOrder) do
         local b = GetTabButton(i)
         b.key = key
+        b:SetHeight(th)
         StyleTab(b)
-        local w = math.max(60, math.min(140, b.label:GetStringWidth() + 18))
+        local badgeW = b.badge:IsShown() and (b.badge:GetWidth() + 4) or 0
+        local w = math.max(60, math.min(140 + badgeW, b.label:GetStringWidth() + 18 + badgeW))
         widths[i] = w
         total = total + w
     end
@@ -1229,36 +1466,45 @@ ns.RefreshTabs = function()
     -- list button (always including the active one); the rest are in the list.
     local useMenu = n >= TAB_MENU_AT
     local shown = {}
+    local room = avail
     if useMenu then
-        local room = avail - GetTabMenuButton():GetWidth() - gap
-        local used = 0
+        -- as many as fit at their own width, but at least TAB_MENU_MIN; they
+        -- are then stretched evenly so the row is filled up to the list button
+        room = avail - GetTabMenuButton():GetWidth() - gap
+        local k, used = 0, 0
         for i = 1, n do
             if used + widths[i] > room then break end
-            shown[#shown + 1] = i
+            k = i
             used = used + widths[i] + gap
         end
+        k = math.max(k, math.min(TAB_MENU_MIN, n))
+        -- the active tab first, then tabs with unread whispers (so a new
+        -- whisper never hides in the list), then the rest in tab order
         local activeIdx = IndexOf(tabOrder, ns.activeKey)
-        if activeIdx and not IndexOf(shown, activeIdx) then
-            -- drop tabs from the end until the active one fits
-            while #shown > 0 and used + widths[activeIdx] > room do
-                used = used - widths[tremove(shown)] - gap
-            end
-            shown[#shown + 1] = activeIdx
+        if activeIdx then shown[1] = activeIdx end
+        for i, key in ipairs(tabOrder) do
+            if #shown >= k then break end
+            if i ~= activeIdx and KeyUnread(key) > 0 then shown[#shown + 1] = i end
         end
-        if #shown == 0 then shown[1] = activeIdx or 1 end
+        for i = 1, n do
+            if #shown >= k then break end
+            if not IndexOf(shown, i) then shown[#shown + 1] = i end
+        end
+        table.sort(shown)
     else
         for i = 1, n do shown[i] = i end
     end
 
-    local squeeze = not useMenu and (total + gap * (n - 1)) > avail
-    local even = math.floor((avail - gap * (n - 1)) / n)
+    local k = #shown
+    local squeeze = useMenu or (total + gap * (n - 1)) > avail
+    local even = math.floor((room - gap * (k - 1)) / k)
     local x = 0
     local isShown = {}
-    for _, i in ipairs(shown) do
+    for j, i in ipairs(shown) do
         isShown[i] = true
         local b = tabButtons[i]
         local w = squeeze and even or widths[i]
-        if useMenu then w = math.max(30, math.min(w, avail - x - gap - tabMenuBtn:GetWidth())) end
+        if useMenu and j == k then w = room - x end -- last tab takes the rounding leftover
         b:SetWidth(w)
         b:ClearAllPoints()
         b:SetPoint("BOTTOMLEFT", tabStrip, "BOTTOMLEFT", x, 0)
@@ -1275,6 +1521,7 @@ ns.RefreshTabs = function()
             if not isShown[i] then hidden[#hidden + 1] = key end
         end
         tabMenuBtn.hidden = hidden
+        tabMenuBtn:SetHeight(th)
         tabMenuBtn:ClearAllPoints()
         tabMenuBtn:SetPoint("BOTTOMRIGHT", tabStrip, "BOTTOMRIGHT", 0, 0)
         StyleTabMenuBtn(tabMenuBtn)
@@ -1285,6 +1532,71 @@ ns.RefreshTabs = function()
         if tabMenu then tabMenu:Hide() end
     end
     if ns.UpdateSessionUI then ns.UpdateSessionUI() end
+end
+
+-- Next (step 1) / previous (step -1) tab, wrapping around.
+ns.CycleTab = function(step)
+    local n = #tabOrder
+    if not ns.DB.tabbed or n == 0 then return end
+    local i = IndexOf(tabOrder, ns.activeKey)
+    if i then
+        i = (i - 1 + step) % n + 1
+    else
+        i = step > 0 and 1 or n
+    end
+    ns.ActivateTab(tabOrder[i])
+end
+
+-- Jump to the next conversation with unread whispers: the next unread tab
+-- after the one you're on, else the most recent unread whisper.
+ns.NextUnread = function()
+    if ns.DB.tabbed then
+        local n = #tabOrder
+        local cur = IndexOf(tabOrder, ns.activeKey) or 0
+        for s = 1, n do
+            local key = tabOrder[(cur - 1 + s) % n + 1]
+            if key ~= ns.activeKey and KeyUnread(key) > 0 then ns.ActivateTab(key); return end
+        end
+    end
+    local best
+    for key, s in pairs(ns.session) do
+        if KeyUnread(key) > 0 and (not best or s.t > ns.session[best].t) then best = key end
+    end
+    if best then ns.OpenWindow(best) else Print("No unread whispers.") end
+end
+
+-- Key bindings (Bindings.xml; Options > Keybindings > AddOns > DMme)
+BINDING_HEADER_DMME = "DMme"
+BINDING_NAME_DMME_NEXT_TAB = "Next tab"
+BINDING_NAME_DMME_PREV_TAB = "Previous tab"
+BINDING_NAME_DMME_NEXT_UNREAD = "Next unread whisper"
+function DMme_NextTab() ns.CycleTab(1) end
+function DMme_PrevTab() ns.CycleTab(-1) end
+function DMme_NextUnread() ns.NextUnread() end
+
+-- Clicking anywhere outside the tab list, quick replies or emoji picker
+-- closes it (clicks on the button that opened it, or on its whisper
+-- window, don't). GLOBAL_MOUSE_DOWN is missing on some old clients: then
+-- they close the old way (Escape or their button).
+do
+    local function CloseIfOutside(m, ...)
+        if not (m and m:IsShown()) or m:IsMouseOver() then return end
+        for i = 1, select("#", ...) do
+            local o = select(i, ...)
+            if o and o:IsVisible() and o:IsMouseOver() then return end
+        end
+        m:Hide()
+    end
+    local watcher = CreateFrame("Frame")
+    if pcall(watcher.RegisterEvent, watcher, "GLOBAL_MOUSE_DOWN") then
+        watcher:SetScript("OnEvent", function()
+            CloseIfOutside(tabMenu, tabMenuBtn)
+            local r = ns.replyMenu
+            if r then CloseIfOutside(r, r.anchor, r.owner) end
+            local p = Emoji.picker
+            if p then CloseIfOutside(p, p.anchor, p.owner) end
+        end)
+    end
 end
 
 local function SetTabbed(on)
@@ -1311,6 +1623,7 @@ ns.DEFAULT_REPLIES = DEFAULT_REPLIES
 ns.Trim = Trim
 ns.ApplyPosition = ApplyPosition
 ns.LayoutButtons = LayoutButtons
+ns.DayBreak = DayBreak
 ns.UpdateTitle = UpdateTitle
 ns.StartFlash = StartFlash
 ns.StopFlash = StopFlash

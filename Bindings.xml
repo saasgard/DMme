@@ -1,0 +1,11 @@
+<Bindings>
+    <Binding name="DMME_NEXT_TAB" header="DMME" category="ADDONS">
+        DMme_NextTab()
+    </Binding>
+    <Binding name="DMME_PREV_TAB" category="ADDONS">
+        DMme_PrevTab()
+    </Binding>
+    <Binding name="DMME_NEXT_UNREAD" category="ADDONS">
+        DMme_NextUnread()
+    </Binding>
+</Bindings>

@@ -137,6 +137,7 @@ end
 
 local function RelayoutAllButtons()
     for _, f in pairs(windows) do LayoutButtons(f) end
+    if ns.DB.tabbed and ns.RefreshTabs then ns.RefreshTabs() end
 end
 
 local SETTINGS_W = 360
@@ -502,8 +503,12 @@ local function CreateSettings()
     Stepper("Message text size", function() return tostring(ns.DB.fontSize or DefaultFontSize()) end,
         function(d) SetFontSize((ns.DB.fontSize or DefaultFontSize()) + d) end,
         "Text size in whisper windows and History.\nStarts at your chat font size.")
+    Check("Compact mode", "Smaller title bar, tabs and padding in whisper windows.\nThe title bar shows just the name (hover it for details).",
+        function() return ns.DB.compact end, function(v) ns.DB.compact = v; RelayoutAllButtons() end)
 
     Section("Window buttons")
+    Check("Show as icons in the title bar", "The buttons below as small icons next to the gear\n(hover one to see what it does).\nOff: a row of text buttons under the title bar.",
+        function() return ns.DB.actionIcons end, function(v) ns.DB.actionIcons = v; RelayoutAllButtons() end)
     local function ButtonCheck(id, label, tip)
         Check(label, tip, function() return ns.DB.buttons[id] end,
             function(v) ns.DB.buttons[id] = v; RelayoutAllButtons() end)

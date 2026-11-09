@@ -15,6 +15,8 @@ globals = {
     "DMmeDB", "DMmeHistory",
     "DMme_OnAddonCompartmentClick", "DMme_OnAddonCompartmentEnter", "DMme_OnAddonCompartmentLeave",
     "SLASH_DMME1", "SLASH_DMME2",
+    "BINDING_HEADER_DMME", "BINDING_NAME_DMME_NEXT_TAB", "BINDING_NAME_DMME_PREV_TAB", "BINDING_NAME_DMME_NEXT_UNREAD",
+    "DMme_NextTab", "DMme_PrevTab", "DMme_NextUnread",
     "SlashCmdList", "StaticPopupDialogs", "UISpecialFrames",
 }
 
@@ -29,9 +31,9 @@ read_globals = {
     "Ambiguate", "BNGetNumFriends", "BNInviteFriend", "BNSendWhisper", "CanGuildInvite",
     "ChatEdit_InsertLink", "ChatFrame_AddMessageEventFilter", "CreateColor", "CreateFont", "CreateFrame",
     "FriendsFrame_InviteOrRequestToJoin", "GetCursorPosition", "GetNormalizedRealmName", "GetNumWhoResults",
-    "GetPlayerInfoByGUID", "GetRealmID", "GetRealmName", "GetTime", "GetWhoInfo", "InCombatLockdown",
+    "GetGuildRosterInfo", "GetNumGuildMembers", "GetPlayerInfoByGUID","GetRealmID", "GetRealmName", "GetTime", "GetWhoInfo", "InCombatLockdown",
     "InterfaceOptions_AddCategory", "InviteUnit", "IsControlKeyDown", "IsGuildMember", "IsInGuild",
-    "IsModifierKeyDown", "IsShiftKeyDown", "MouseIsOver", "PlaySound", "SendChatMessage", "SendWho",
+    "IsModifierKeyDown", "IsMouseButtonDown", "IsShiftKeyDown", "MouseIsOver", "PlaySound", "SendChatMessage", "SendWho",
     "SetItemRef", "StaticPopup_Show", "UIDropDownMenu_AddButton", "UIDropDownMenu_CreateInfo",
     "UnitClass", "UnitInParty", "UnitInRaid", "UnitIsPlayer", "UnitName", "UnitPopup_ShowMenu",
     -- frames, mixins, tables, constants
