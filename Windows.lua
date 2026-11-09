@@ -1033,10 +1033,173 @@ local function GetTabButton(i)
     return b
 end
 
+----------------------------------------------------------------------
+-- Tab list: with TAB_MENU_AT or more tabs, tabs keep a readable width and
+-- the ones that don't fit move into a dropdown list (button at the right
+-- end of the tab strip). The list shows every conversation.
+----------------------------------------------------------------------
+local TAB_MENU_AT = 7
+local TAB_MENU_ROW_H = 20
+local tabMenuBtn, tabMenu
+
+local function CreateTabMenu()
+    local m = CreateFrame("Frame", "DMmeTabList", UIParent, BACKDROP_TEMPLATE)
+    m:SetWidth(180)
+    Skin(m, "list")
+    m:SetFrameStrata("FULLSCREEN_DIALOG")
+    m:SetToplevel(true)
+    m:SetClampedToScreen(true)
+    m:EnableMouse(true)
+    m:Hide()
+    tinsert(UISpecialFrames, "DMmeTabList")
+    m.rows = {}
+
+    local function Row(i)
+        local row = m.rows[i]
+        if row then return row end
+        row = CreateFrame("Button", nil, m, BACKDROP_TEMPLATE)
+        row:SetHeight(TAB_MENU_ROW_H)
+        row:SetPoint("TOPLEFT", 4, -(4 + (i - 1) * TAB_MENU_ROW_H))
+        row:SetPoint("TOPRIGHT", -4, -(4 + (i - 1) * TAB_MENU_ROW_H))
+        row:SetBackdrop({ bgFile = WHITE })
+        row:SetBackdropColor(0, 0, 0, 0)
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
+        row.mark = row:CreateTexture(nil, "ARTWORK") -- accent bar on the active conversation
+        row.mark:SetTexture(WHITE)
+        row.mark:SetWidth(2)
+        row.mark:SetPoint("TOPLEFT", 0, -3)
+        row.mark:SetPoint("BOTTOMLEFT", 0, 3)
+        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.text:SetPoint("LEFT", 8, 0)
+        row.text:SetPoint("RIGHT", -22, 0)
+        row.text:SetJustifyH("LEFT")
+        row.text:SetWordWrap(false)
+        row.del = FlatButton(row, "x", { bare = true, width = 18, height = 18, hoverColor = { 0.9, 0.25, 0.25 },
+            tooltip = "Close tab", tooltipText = "Your whispers stay in the whisper list." })
+        row.del:SetPoint("RIGHT", -2, 0)
+        row.del:SetScript("OnClick", function() ns.CloseTab(row.key) end)
+        row:SetScript("OnEnter", function(self)
+            self:SetBackdropColor(1, 1, 1, 0.08)
+            ShowTooltip(self, ShortName(self.key), "Left-click: switch\nRight-click: close tab")
+        end)
+        row:SetScript("OnLeave", function(self)
+            self:SetBackdropColor(0, 0, 0, 0)
+            GameTooltip:Hide()
+        end)
+        row:SetScript("OnClick", function(self, button)
+            if button == "LeftButton" then
+                m:Hide()
+                ns.ActivateTab(self.key)
+            else
+                ns.CloseTab(self.key)
+            end
+        end)
+        m.rows[i] = row
+        return row
+    end
+
+    function m:Refresh()
+        local n, w = #tabOrder, 140
+        for i, key in ipairs(tabOrder) do
+            local row = Row(i)
+            row.key = key
+            local f = windows[key]
+            local unread = f and f.unread or 0
+            local name = ShortName(key)
+            local r, g, bl = KeyRGB(key)
+            if key == ns.activeKey then
+                row.text:SetText(Colorize(name, r or 1, g or 1, bl or 1))
+            elseif unread > 0 then
+                row.text:SetText(KeyColorize(key, name .. " (" .. unread .. ")"))
+            else
+                row.text:SetText("|cff9a9aa8" .. name .. "|r")
+            end
+            w = math.max(w, row.text:GetStringWidth() + 40)
+            row.mark:SetVertexColor(r or C.accent[1], g or C.accent[2], bl or C.accent[3], 1)
+            row.mark:SetShown(key == ns.activeKey)
+            row:Show()
+        end
+        for i = n + 1, #self.rows do self.rows[i]:Hide() end
+        self:SetWidth(math.min(w, 260))
+        self:SetHeight(8 + n * TAB_MENU_ROW_H)
+    end
+
+    tabMenu = m
+    return m
+end
+
+local function ToggleTabMenu()
+    local m = tabMenu or CreateTabMenu()
+    if m:IsShown() then m:Hide(); return end
+    m:SetScale(ns.DB.scale or 1)
+    m:ClearAllPoints()
+    m:SetPoint("TOPRIGHT", tabMenuBtn, "BOTTOMRIGHT", 0, -2)
+    m:Refresh()
+    m:Show()
+    m:Raise()
+end
+
+-- "+3" (tabs not shown), coloured like an unread tab if one of them has unread whispers
+local function StyleTabMenuBtn(b, hover)
+    local hidden = b.hidden or {}
+    local hl
+    for _, key in ipairs(hidden) do
+        local f = windows[key]
+        if f and (f.unread or 0) > 0 then hl = key; break end
+    end
+    b:SetBackdropColor(unpack(hover and C.tabHover or C.tabOff))
+    if hl then
+        b:SetBackdropBorderColor(KeyHighlight(hl))
+    else
+        b:SetBackdropBorderColor(unpack(C.border))
+    end
+    local text = #hidden > 0 and ("+" .. #hidden) or "All"
+    if hl then
+        b.label:SetText(KeyColorize(hl, text))
+    else
+        b.label:SetText((hover and "|cffffffff" or "|cff9a9aa8") .. text .. "|r")
+    end
+end
+
+local function GetTabMenuButton()
+    if tabMenuBtn then return tabMenuBtn end
+    local b = CreateFrame("Button", nil, tabStrip, BACKDROP_TEMPLATE)
+    b:SetSize(46, 22)
+    b.label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.label:SetPoint("LEFT", 7, 0)
+    b.arrow = b:CreateTexture(nil, "ARTWORK")
+    b.arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
+    b.arrow:SetSize(16, 16)
+    b.arrow:SetPoint("RIGHT", -3, 0)
+    OnTheme(function(classic)
+        b:SetBackdrop(classic and TOOLTIP_BD or FLAT)
+        StyleTabMenuBtn(b)
+    end)
+    b:RegisterForDrag("LeftButton")
+    b:SetScript("OnClick", ToggleTabMenu)
+    b:SetScript("OnEnter", function(self)
+        StyleTabMenuBtn(self, true)
+        local count = #(self.hidden or {})
+        ShowTooltip(self, "All conversations (" .. #tabOrder .. ")",
+            (count > 0 and (count .. " more not shown as tabs.\n") or "") .. "Click: show the list\nDrag: move window")
+    end)
+    b:SetScript("OnLeave", function(self) StyleTabMenuBtn(self); GameTooltip:Hide() end)
+    -- dragging it moves the whole tabbed window, like a tab
+    b:SetScript("OnDragStart", function() local f = ActiveFrame(); if f then f:StartMoving() end end)
+    b:SetScript("OnDragStop", function()
+        local f = ActiveFrame()
+        if f then f:StopMovingOrSizing(); SavePosition(f) end
+    end)
+    tabMenuBtn = b
+    return b
+end
+
 ns.RefreshTabs = function()
     if not tabStrip then
         tabStrip = CreateFrame("Frame", nil, UIParent)
         tabStrip:SetHeight(22)
+        -- the strip hides with the window (and on a tab switch): take the list with it
+        tabStrip:SetScript("OnHide", function() if tabMenu then tabMenu:Hide() end end)
     end
     local host = ActiveFrame()
     if not ns.DB.tabbed or not host or #tabOrder == 0 then
@@ -1061,19 +1224,66 @@ ns.RefreshTabs = function()
         widths[i] = w
         total = total + w
     end
-    local squeeze = (total + gap * (n - 1)) > avail
+    -- Under TAB_MENU_AT tabs: every tab gets a button (squeezed if needed).
+    -- From TAB_MENU_AT up: tabs keep their width, as many as fit next to the
+    -- list button (always including the active one); the rest are in the list.
+    local useMenu = n >= TAB_MENU_AT
+    local shown = {}
+    if useMenu then
+        local room = avail - GetTabMenuButton():GetWidth() - gap
+        local used = 0
+        for i = 1, n do
+            if used + widths[i] > room then break end
+            shown[#shown + 1] = i
+            used = used + widths[i] + gap
+        end
+        local activeIdx = IndexOf(tabOrder, ns.activeKey)
+        if activeIdx and not IndexOf(shown, activeIdx) then
+            -- drop tabs from the end until the active one fits
+            while #shown > 0 and used + widths[activeIdx] > room do
+                used = used - widths[tremove(shown)] - gap
+            end
+            shown[#shown + 1] = activeIdx
+        end
+        if #shown == 0 then shown[1] = activeIdx or 1 end
+    else
+        for i = 1, n do shown[i] = i end
+    end
+
+    local squeeze = not useMenu and (total + gap * (n - 1)) > avail
     local even = math.floor((avail - gap * (n - 1)) / n)
     local x = 0
-    for i = 1, n do
+    local isShown = {}
+    for _, i in ipairs(shown) do
+        isShown[i] = true
         local b = tabButtons[i]
         local w = squeeze and even or widths[i]
+        if useMenu then w = math.max(30, math.min(w, avail - x - gap - tabMenuBtn:GetWidth())) end
         b:SetWidth(w)
         b:ClearAllPoints()
         b:SetPoint("BOTTOMLEFT", tabStrip, "BOTTOMLEFT", x, 0)
         b:Show()
         x = x + w + gap
     end
-    for i = n + 1, #tabButtons do tabButtons[i]:Hide() end
+    for i = 1, #tabButtons do
+        if not isShown[i] then tabButtons[i]:Hide() end
+    end
+
+    if useMenu then
+        local hidden = {}
+        for i, key in ipairs(tabOrder) do
+            if not isShown[i] then hidden[#hidden + 1] = key end
+        end
+        tabMenuBtn.hidden = hidden
+        tabMenuBtn:ClearAllPoints()
+        tabMenuBtn:SetPoint("BOTTOMRIGHT", tabStrip, "BOTTOMRIGHT", 0, 0)
+        StyleTabMenuBtn(tabMenuBtn)
+        tabMenuBtn:Show()
+        if tabMenu and tabMenu:IsShown() then tabMenu:Refresh() end
+    else
+        if tabMenuBtn then tabMenuBtn:Hide() end
+        if tabMenu then tabMenu:Hide() end
+    end
     if ns.UpdateSessionUI then ns.UpdateSessionUI() end
 end
 
