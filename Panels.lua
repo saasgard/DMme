@@ -577,7 +577,16 @@ local function ToggleSessionPanel(anchor)
     p:SetScale(ns.DB.scale or 1)
     p:ClearAllPoints()
     if not (anchor and anchor.GetCenter) then
-        anchor = (mmButton and mmButton:IsShown()) and mmButton or nil
+        -- no button clicked (key binding, /dm list): next to the floating
+        -- button when it's in use, else the minimap button
+        local float = ns.floatButton
+        if float and float:IsVisible() then
+            anchor = float
+        elseif mmButton and mmButton:IsVisible() then
+            anchor = mmButton
+        else
+            anchor = nil
+        end
     end
     -- open towards the middle of the screen
     local x = anchor and anchor:GetCenter()
@@ -818,6 +827,7 @@ ns.CreateFloatButton = function()
     end)
     b:SetScript("OnEnter", function(self) ShowSessionTooltip(self, "ANCHOR_LEFT", "float") end)
     floatButton = b
+    ns.floatButton = b -- the whisper list opens next to it (ToggleSessionPanel)
     PositionFloatButton()
     ns.UpdateSessionUI()
 end
