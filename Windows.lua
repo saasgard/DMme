@@ -930,15 +930,8 @@ local function CreateWindow(key)
     edit:SetAutoFocus(false)
     edit:SetMaxLetters(255)
     edit:SetTextInsets(0, 0, 0, 0)
-    -- Up / Down arrow: the messages you sent before (like the main chat box)
+    -- arrow keys reach OnArrowPressed (Up / Down: sent messages, see below)
     edit:SetAltArrowKeyMode(false)
-    if edit.SetHistoryLines then edit:SetHistoryLines(30) end
-    do
-        local s = ns.session[key]
-        for _, e in ipairs(s and s.lines or {}) do
-            if not e.i and not e.sys and e.m then edit:AddHistoryLine(e.m) end
-        end
-    end
     f.edit = edit
 
     -- emoji picker button, inside the right end of the box
@@ -968,8 +961,38 @@ local function CreateWindow(key)
     inputBox:SetScript("OnMouseDown", function() edit:SetFocus() end)
     msg:SetScript("OnMouseDown", function() f:Raise(); StopFlash(f); edit:SetFocus() end)
 
-    edit:SetScript("OnTextChanged", function(self)
+    edit:SetScript("OnTextChanged", function(self, userInput)
         placeholder:SetShown(self:GetText() == "" and not self:HasFocus())
+        if userInput then f.histPos = nil end -- typing: Up starts from the newest again
+    end)
+
+    -- Up / Down: step through the messages you sent in this conversation
+    -- (this session, also kept through /reload). Down past the newest
+    -- brings back what you were typing.
+    edit:SetScript("OnArrowPressed", function(self, k)
+        if k ~= "UP" and k ~= "DOWN" then return end
+        local sent = {}
+        local s = ns.session[f.key]
+        for _, e in ipairs(s and s.lines or {}) do
+            if not e.i and not e.sys and e.m and e.m ~= sent[#sent] then sent[#sent + 1] = e.m end
+        end
+        if #sent == 0 then return end
+        local pos = f.histPos
+        if k == "UP" then
+            if pos then
+                pos = math.max(1, pos - 1)
+            else
+                f.histDraft = self:GetText()
+                pos = #sent
+            end
+        else
+            if not pos then return end
+            pos = pos + 1
+            if pos > #sent then pos = nil end
+        end
+        f.histPos = pos
+        self:SetText(pos and sent[pos] or f.histDraft or "")
+        self:SetCursorPosition(#self:GetText())
     end)
     edit:SetScript("OnEditFocusGained", function()
         placeholder:Hide()
@@ -985,8 +1008,8 @@ local function CreateWindow(key)
         local text = self:GetText()
         if text and text:match("%S") then
             SendWhisperTo(f.key, text)
-            self:AddHistoryLine(text)
         end
+        f.histPos, f.histDraft = nil, nil
         self:SetText("")
     end)
     edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
