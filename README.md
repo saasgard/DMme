@@ -46,6 +46,24 @@ The minimap button glows and shows how many conversations are waiting for you. C
 **A button you can put anywhere**
 Does your minimap addon collect every button into a bag? Turn on the floating DMme button, drag it where you like and resize it with Ctrl + mouse wheel. It's off by default.
 
+**Know what happened to your message**
+If a whisper wasn't delivered because they're offline, you see it right in the conversation. The same goes for their away or busy replies, and for when they come online or go offline.
+
+**Fast typing**
+Press Up and Down in the text box to bring back messages you sent before, just like the main chat. Turn on **Reply key opens DMme** and your usual Reply key (R) answers the last whisper in DMme. Turn on **Move /w to DMme** and typing `/w name` in the main chat opens their DMme window instead.
+
+**Pin the people you talk to most**
+Right-click a name and choose **Pin to top of list**. Pinned people stay at the top of the whisper list and their tabs come first.
+
+**Busy? Let DMme answer**
+Turn on the busy auto-reply with your own message ("In a dungeon, back in 20"). Everyone who whispers you gets it once, and it turns itself off when you log in.
+
+**Stays out of the way**
+Windows can fade to see-through when nothing is happening and come back when you hover or type. When the game is in the background, a new whisper flashes the WoW icon on your taskbar.
+
+**Key bindings**
+DMme has its own section under Keybindings: show or hide the windows, reply to the last whisper, open the whisper list, switch tabs, jump to the next unread whisper, close or minimize the current window, mark everything as read, and turn the busy auto-reply on or off. There's a shortcut to it in the settings.
+
 **Keep your conversations (optional)**
 Turn on history to save your whispers between sessions. You can browse, search and copy them later in the History window, and choose how long to keep them: a day, a week, a month, a year or forever. It's off by default.
 
@@ -64,6 +82,8 @@ Settings are split into General, Look, Chat and History tabs. Choose tabs or sep
 | `/dm history` | Browse saved conversations |
 | `/dm mute <name> [1h\|24h\|week\|month\|forever]` | Mute someone's whispers |
 | `/dm unmute <name>` | Unmute someone |
+| `/dm pin <name>` | Pin someone to the top of the whisper list (again to unpin) |
+| `/dm busy [message\|off]` | Turn the busy auto-reply on or off, or set its message |
 | `/dm tabs` | Switch between tabs and separate windows |
 | `/dm theme dark\|forever\|midnight` | Switch the look |
 | `/dm button [size\|reset]` | Show, resize or reset the floating button |

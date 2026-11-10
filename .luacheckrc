@@ -15,8 +15,8 @@ globals = {
     "DMmeDB", "DMmeHistory",
     "DMme_OnAddonCompartmentClick", "DMme_OnAddonCompartmentEnter", "DMme_OnAddonCompartmentLeave",
     "SLASH_DMME1", "SLASH_DMME2",
-    "BINDING_HEADER_DMME", "BINDING_NAME_DMME_NEXT_TAB", "BINDING_NAME_DMME_PREV_TAB", "BINDING_NAME_DMME_NEXT_UNREAD",
-    "DMme_NextTab", "DMme_PrevTab", "DMme_NextUnread",
+    "BINDING_NAME_DMME_TOGGLE", "BINDING_NAME_DMME_REPLY", "BINDING_NAME_DMME_LIST", "BINDING_NAME_DMME_CLOSE", "BINDING_NAME_DMME_MINIMIZE", "BINDING_NAME_DMME_MARK_READ", "BINDING_NAME_DMME_BUSY", "BINDING_NAME_DMME_NEXT_TAB", "BINDING_NAME_DMME_PREV_TAB", "BINDING_NAME_DMME_NEXT_UNREAD",
+    "DMme_ToggleWindows", "DMme_ReplyLast", "DMme_ToggleList", "DMme_CloseCurrent", "DMme_MinimizeCurrent", "DMme_MarkAllRead", "DMme_ToggleBusy", "DMme_NextTab", "DMme_PrevTab", "DMme_NextUnread",
     "SlashCmdList", "StaticPopupDialogs", "UISpecialFrames",
 }
 
@@ -32,7 +32,7 @@ read_globals = {
     "ChatEdit_InsertLink", "ChatFrame_AddMessageEventFilter", "CreateColor", "CreateFont", "CreateFrame",
     "FriendsFrame_InviteOrRequestToJoin", "GetCursorPosition", "GetNormalizedRealmName", "GetNumWhoResults",
     "GetGuildRosterInfo", "GetNumGuildMembers", "GetPlayerInfoByGUID","GetRealmID", "GetRealmName", "GetTime", "GetWhoInfo", "InCombatLockdown",
-    "InterfaceOptions_AddCategory", "InviteUnit", "IsControlKeyDown", "IsGuildMember", "IsInGuild",
+    "InterfaceOptions_AddCategory", "InviteUnit", "BNet_GetBNetIDAccount", "ChatEdit_DeactivateChat", "ChatEdit_UpdateHeader", "ClearOverrideBindings", "FlashClientIcon", "GetBindingKey", "SetOverrideBinding", "ERR_CHAT_PLAYER_NOT_FOUND_S", "ERR_FRIEND_ONLINE_SS", "ERR_FRIEND_OFFLINE_S", "NUM_CHAT_WINDOWS", "OKAY", "CANCEL", "KeyBindingFrame", "KeyBindingFrame_LoadUI", "ShowUIPanel", "IsControlKeyDown", "IsGuildMember", "IsInGuild",
     "IsModifierKeyDown", "IsMouseButtonDown", "IsShiftKeyDown", "MouseIsOver", "PlaySound", "SendChatMessage", "SendWho",
     "SetItemRef", "StaticPopup_Show", "UIDropDownMenu_AddButton", "UIDropDownMenu_CreateInfo",
     "UnitClass", "UnitInParty", "UnitInRaid", "UnitIsPlayer", "UnitName", "UnitPopup_ShowMenu",

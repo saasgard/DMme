@@ -89,6 +89,33 @@ local function SetLogKeep(id)
     end
 end
 
+-- Busy auto-reply message (OK also turns the auto-reply on)
+local function BusyEditBox(dialog) return dialog.editBox or (dialog.GetEditBox and dialog:GetEditBox()) end
+StaticPopupDialogs["DMME_BUSY_TEXT"] = {
+    text = "Auto-reply message:",
+    button1 = OKAY or "OK",
+    button2 = CANCEL or "Cancel",
+    hasEditBox = true,
+    maxLetters = 200,
+    editBoxWidth = 320,
+    OnShow = function(self)
+        local eb = BusyEditBox(self)
+        if eb then eb:SetText(ns.DB.busyText or ""); eb:HighlightText() end
+    end,
+    OnAccept = function(self)
+        local eb = BusyEditBox(self)
+        if eb then ns.SetBusy(true, eb:GetText()) end
+    end,
+    EditBoxOnEnterPressed = function(self)
+        ns.SetBusy(true, self:GetText())
+        self:GetParent():Hide()
+    end,
+    EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+}
+
 StaticPopupDialogs["DMME_KEEP_HISTORY"] = {
     text = "This will delete %s saved messages older than %s.\nContinue?",
     button1 = YES or "Yes",
@@ -445,10 +472,17 @@ local function CreateSettings()
         function() return ns.DB.combatHold end, function(v) ns.DB.combatHold = v end)
     Check("Hide whispers from the main chat", "Whispers only show in DMme, not in your normal chat tabs.",
         function() return ns.DB.hideFromChat end, function(v) ns.DB.hideFromChat = v end)
+    Check("Fade when idle", "Windows turn see-through after a few seconds with no new\nmessages, and come back when you hover over them or type.",
+        function() return ns.DB.fadeIdle end, function(v) ns.DB.fadeIdle = v; ns.ApplyFade() end)
+    Stepper("Faded window visibility", function() return math.floor(ns.DB.fadeAlpha * 100 + 0.5) .. "%" end,
+        function(d) ns.DB.fadeAlpha = math.max(0.1, math.min(0.9, ns.DB.fadeAlpha + d * 0.1)) end,
+        "How much of a faded window you still see.")
 
     Section("Sound")
     Check("Play sound on new whisper", nil,
         function() return ns.DB.sound end, function(v) ns.DB.sound = v end)
+    Check("Flash the taskbar icon", "When the game is in the background, a new whisper makes\nthe WoW icon on your taskbar flash.",
+        function() return ns.DB.flashTaskbar end, function(v) ns.DB.flashTaskbar = v end)
     Dropdown("Whisper sound", SOUND_OPTIONS,
         function() return ns.DB.soundKit end,
         function(id) ns.DB.soundKit = id; PlayWhisperSound(true) end,
@@ -475,6 +509,13 @@ local function CreateSettings()
     Buttons({
         { "Reset position", 110, function() ns.ResetFloatButton() end,
             { tooltip = "Reset position", tooltipText = "Puts the floating button back in the middle of the screen at its normal size." } },
+    })
+
+    Section("Key bindings")
+    Note("Keys to show/hide windows, reply to the last whisper, switch tabs and more.")
+    Buttons({
+        { "Set key bindings", 130, function() ns.OpenKeyBindings() end,
+            { tooltip = "Set key bindings", tooltipText = "Opens the game's Keybindings settings.\nDMme's keys are in their own DMme section." } },
     })
     EndPage()
 
@@ -532,6 +573,23 @@ local function CreateSettings()
             if ns.replyMenu and ns.replyMenu:IsShown() then ns.replyMenu:Refresh() end
         end)
     Note("Add, reorder and delete replies with the Replies button in a whisper window.")
+
+    Section("Main chat")
+    Check("Reply key opens DMme", "The game's Reply key (R by default) opens the conversation\nwith whoever last whispered you in DMme, instead of the main chat box.",
+        function() return ns.DB.replyKey end, function(v) ns.DB.replyKey = v; ns.ApplyReplyKey() end)
+    Check("Move /w to DMme", "Typing /w name in the main chat box opens the DMme\nwindow for that player instead.",
+        function() return ns.DB.redirectWhisper end, function(v) ns.DB.redirectWhisper = v end)
+    Check("Show notices in conversations", "Grey lines in the window when a whisper wasn't delivered,\nwhen they reply that they're away or busy, and when they\ncome online or go offline.",
+        function() return ns.DB.notices end, function(v) ns.DB.notices = v end)
+
+    Section("Busy auto-reply")
+    Check("Auto-reply when busy", "Answers each person once with your message while it's on.\nTurns itself off when you log in.",
+        function() return ns.DB.busy end, function(v) ns.SetBusy(v) end)
+    local busyInfo = Note("", "\"" .. string.rep("m", 60) .. "\"")
+    refreshers[#refreshers + 1] = function() busyInfo:SetText("\"" .. (ns.DB.busyText or "") .. "\"") end
+    Buttons({
+        { "Change message", 120, function() StaticPopup_Show("DMME_BUSY_TEXT") end },
+    })
 
     Section("Spam filter")
     Check("Block spam whispers", "Drops whispers that contain one of your spam words\n(gold sellers, boosting ads...). Never blocks friends, guild,\nyour group, Battle.net, or people you already talk to.",
@@ -641,6 +699,26 @@ do
 end
 
 ----------------------------------------------------------------------
+-- Open the game's key bindings (DMme's keys have their own section).
+-- Newer clients: the Settings panel; older ones: the KeyBindingFrame.
+----------------------------------------------------------------------
+function ns.OpenKeyBindings()
+    if InCombatLockdown and InCombatLockdown() then
+        Print("Key bindings can't be changed in combat.")
+        return
+    end
+    if ns.settings then ns.settings:Hide() end
+    if Settings and Settings.OpenToCategory and Settings.KEYBINDINGS_CATEGORY_ID then
+        Settings.OpenToCategory(Settings.KEYBINDINGS_CATEGORY_ID)
+    elseif KeyBindingFrame_LoadUI or KeyBindingFrame then
+        if KeyBindingFrame_LoadUI then KeyBindingFrame_LoadUI() end
+        if KeyBindingFrame then ShowUIPanel(KeyBindingFrame) end
+    else
+        Print("Open Options > Keybindings and look for the DMme section.")
+    end
+end
+
+----------------------------------------------------------------------
 -- Slash commands
 ----------------------------------------------------------------------
 SLASH_DMME1 = "/dm"
@@ -701,6 +779,16 @@ SlashCmdList.DMME = function(input)
         else
             Print("Usage: /dm mute <name> [1h|24h|week|month|forever]")
         end
+    elseif cmd == "pin" then
+        if rest ~= "" then ns.TogglePin(rest) else Print("Usage: /dm pin <name>  (again to unpin)") end
+    elseif cmd == "busy" then
+        -- /dm busy            on/off
+        -- /dm busy off        off
+        -- /dm busy <message>  on, with that message
+        local r = rest:lower()
+        if r == "off" then ns.SetBusy(false)
+        elseif r == "on" or rest == "" then ns.SetBusy(r == "on" or not ns.DB.busy)
+        else ns.SetBusy(true, rest) end
     elseif cmd == "unmute" then
         if rest ~= "" then ns.UnmuteName(rest) else Print("Usage: /dm unmute <name>") end
     elseif cmd == "muted" then
@@ -787,6 +875,8 @@ SlashCmdList.DMME = function(input)
         Print("  /dm ginvite <name> - show the /ginvite command to copy")
         Print("  /dm mute <name> [1h|24h|week|month|forever] - silence someone's whispers")
         Print("  /dm unmute <name> | /dm muted - undo a mute, list muted players")
+        Print("  /dm pin <name> - pin someone to the top of the whisper list (again to unpin)")
+        Print("  /dm busy [message|off] - auto-reply once to each person (now " .. (ns.DB.busy and "ON" or "OFF") .. ")")
         Print("  /dm hide - toggle hiding whispers from main chat (now " .. (ns.DB.hideFromChat and "ON" or "OFF") .. ")")
         Print("  /dm sound - toggle whisper sound (now " .. (ns.DB.sound and "ON" or "OFF") .. ")")
         Print("  /dm auto - toggle auto-open on whisper (now " .. (ns.DB.autoOpen and "ON" or "OFF") .. ")")

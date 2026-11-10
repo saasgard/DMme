@@ -386,6 +386,7 @@ local function AddLine(key, text, incoming, guid)
     local entry = { t = time(), i = incoming or nil, m = text, me = (not incoming) and playerName or nil }
     local s = ns.session[key] or {}
     s.t, s.text, s.incoming = entry.t, text, incoming
+    if incoming then ns.lastIncoming = key end -- for the "Reply to last whisper" key binding
     s.lines = s.lines or {}
     ns.session[key] = s
 
@@ -425,6 +426,7 @@ local function AddLine(key, text, incoming, guid)
         return
     end
 
+    f.lastActivity = GetTime() -- keeps the window from fading (Settings > General)
     local wasAtBottom = f.msg:AtBottom()
     ns.DayBreak(f, entry.t) -- divider if this is the first message of a new day
     f.msg:AddMessage(FormatEntry(key, entry))
@@ -444,6 +446,35 @@ local function AddLine(key, text, incoming, guid)
     if ns.DB.tabbed then ns.RefreshTabs() end
     ns.UpdateSessionUI()
 end
+
+-- A grey line from the game in a conversation: "not delivered", away/busy
+-- replies, came online / went offline. Only for people you already have a
+-- conversation with; the same notice isn't repeated within 2 minutes.
+local lastNotice = {}
+local function AddNotice(key, text)
+    if not (ns.DB and ns.DB.notices and key) then return end
+    local s, f = ns.session[key], windows[key]
+    if not (s or f) then return end
+    local now = time()
+    local last = lastNotice[key]
+    if last and last.text == text and now - last.t < 120 then return end
+    lastNotice[key] = { text = text, t = now }
+    local entry = { t = now, sys = true, m = text }
+    if s then
+        s.lines = s.lines or {}
+        local lines = s.lines
+        lines[#lines + 1] = entry
+        for _ = 1, #lines - SESSION_LINES do table.remove(lines, 1) end
+    end
+    if f then
+        f.lastActivity = GetTime()
+        local wasAtBottom = f.msg:AtBottom()
+        ns.DayBreak(f, now)
+        f.msg:AddMessage(FormatEntry(key, entry))
+        if wasAtBottom then f.msg:ScrollToBottom() end
+    end
+end
+ns.AddNotice = AddNotice
 
 ----------------------------------------------------------------------
 -- /who results -> player profile (level, race, class, guild, zone)
@@ -704,6 +735,7 @@ events:SetScript("OnEvent", function(self, event, ...)
     if event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_BN_WHISPER" then
         AddLine(key, text, true, guid)
         PlayWhisperSound(false, isBN)
+        if ns.OnIncoming then ns.OnIncoming(key) end -- taskbar flash, busy auto-reply (Extras.lua)
         if not ns.DB.logEnabled and not ns.DB.hintShown then
             ns.DB.hintShown = true
             Print("Tip: type |cffffd100/dm log|r to save whisper history, and |cffffd100/dm history|r to browse it.")
@@ -801,6 +833,10 @@ if Menu and Menu.ModifyMenu then
         end
         if ns.DB.menu.open then
             root:CreateButton("Open Whisper Window", function() ns.OpenWindow(name) end)
+            local key = FullName(name)
+            if key and ns.TogglePin then
+                root:CreateButton(ns.DB.pinned[key] and "Unpin" or "Pin to top of list", function() ns.TogglePin(key) end)
+            end
         end
         if ns.DB.menu.mute and FullName(name) ~= FullName(playerName) then
             local left = MuteLeftText(FullName(name))
@@ -848,6 +884,14 @@ elseif UnitPopup_ShowMenu then
             info.notCheckable = true
             info.func = function() ns.OpenWindow(target) end
             UIDropDownMenu_AddButton(info, 1)
+            local key = FullName(target)
+            if key and ns.TogglePin then
+                local pin = UIDropDownMenu_CreateInfo()
+                pin.text = ns.DB.pinned[key] and "Unpin" or "Pin to top of list"
+                pin.notCheckable = true
+                pin.func = function() ns.TogglePin(key) end
+                UIDropDownMenu_AddButton(pin, 1)
+            end
         end
         if ns.DB.menu.mute then
             -- no submenu here: 24 hours (other lengths: /dm mute <name> <time>)

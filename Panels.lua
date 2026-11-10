@@ -48,16 +48,25 @@ local function IsActiveConversation(key)
     return f and f:IsShown() or false
 end
 
--- This session's conversations: unread ones first, then newest first.
+-- This session's conversations plus pinned people: pinned first, then
+-- unread ones, then newest first.
 local function SessionKeys()
-    local list, unread = {}, {}
-    for key in pairs(ns.session) do
+    local list, unread, seen = {}, {}, {}
+    local function add(key)
+        if seen[key] then return end
+        seen[key] = true
         list[#list + 1] = key
         unread[key] = KeyUnread(key) > 0
     end
+    for key in pairs(ns.session) do add(key) end
+    for key in pairs(ns.DB.pinned) do add(key) end
+    local function t(key) return ns.session[key] and ns.session[key].t or 0 end
     table.sort(list, function(a, b)
+        local pa, pb = ns.DB.pinned[a] or false, ns.DB.pinned[b] or false
+        if pa ~= pb then return pa end
         if unread[a] ~= unread[b] then return unread[a] end
-        return ns.session[a].t > ns.session[b].t
+        if t(a) ~= t(b) then return t(a) > t(b) end
+        return a < b
     end)
     return list
 end
@@ -360,7 +369,11 @@ local function CreateSessionPanel()
         r.del = FlatButton(r, "x", { bare = true, width = 18, height = 18, hoverColor = { 0.9, 0.25, 0.25 },
             tooltip = "Remove", tooltipText = "Remove from this list and close the conversation." })
         r.del:SetPoint("RIGHT", -2, 0)
-        r.del:SetScript("OnClick", function() if r.key then RemoveSession(r.key) end end)
+        r.del:SetScript("OnClick", function()
+            if not r.key then return end
+            if ns.DB.pinned[r.key] then ns.TogglePin(r.key) end -- x on a pinned row unpins it too
+            RemoveSession(r.key)
+        end)
 
         r.when = r:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         r.when:SetPoint("TOPRIGHT", r.del, "TOPLEFT", -4, -1)
@@ -484,10 +497,12 @@ local function CreateSessionPanel()
                 local s = ns.session[key]
                 local classFile = KeyInfo(key)
                 local cr, cg, cb = KeyRGB(key)
-                r.name:SetText(Colorize(ShortName(key), cr, cg, cb))
-                r.when:SetText(Ago(s.t))
-                local text = s.text or ""
-                if s.incoming then
+                r.name:SetText((ns.DB.pinned[key] and ns.PIN_ICON or "") .. Colorize(ShortName(key), cr, cg, cb))
+                r.when:SetText(s and Ago(s.t) or "")
+                local text = s and s.text or ""
+                if not s then
+                    r.preview:SetText("|cff8a8a98Pinned - no whispers yet this session|r")
+                elseif s.incoming then
                     local tr, tg, tb = KeyTextRGB(key)
                     r.preview:SetText(Colorize(Emoji.Render(text), tr * 0.8, tg * 0.8, tb * 0.8)) -- a bit dimmer than the name
                 else
@@ -533,7 +548,7 @@ local function ShowSessionTooltip(owner, anchorPoint, isMinimapButton)
             local unread = KeyUnread(key)
             local cr, cg, cb = KeyRGB(key)
             GameTooltip:AddDoubleLine(ShortName(key) .. (unread > 0 and ("  " .. KeyColorize(key, "(" .. unread .. ")")) or ""),
-                Ago(ns.session[key].t), cr or 1, cg or 1, cb or 1, 0.6, 0.6, 0.65)
+                ns.session[key] and Ago(ns.session[key].t) or "pinned", cr or 1, cg or 1, cb or 1, 0.6, 0.6, 0.65)
         end
     end
     GameTooltip:AddLine(" ")

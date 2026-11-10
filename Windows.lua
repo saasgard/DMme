@@ -930,6 +930,15 @@ local function CreateWindow(key)
     edit:SetAutoFocus(false)
     edit:SetMaxLetters(255)
     edit:SetTextInsets(0, 0, 0, 0)
+    -- Up / Down arrow: the messages you sent before (like the main chat box)
+    edit:SetAltArrowKeyMode(false)
+    if edit.SetHistoryLines then edit:SetHistoryLines(30) end
+    do
+        local s = ns.session[key]
+        for _, e in ipairs(s and s.lines or {}) do
+            if not e.i and not e.sys and e.m then edit:AddHistoryLine(e.m) end
+        end
+    end
     f.edit = edit
 
     -- emoji picker button, inside the right end of the box
@@ -976,6 +985,7 @@ local function CreateWindow(key)
         local text = self:GetText()
         if text and text:match("%S") then
             SendWhisperTo(f.key, text)
+            self:AddHistoryLine(text)
         end
         self:SetText("")
     end)
@@ -1036,9 +1046,23 @@ local function IndexOf(list, value)
     for i, v in ipairs(list) do if v == value then return i end end
 end
 
+-- Add a key to the tab order: pinned people go after the other pinned
+-- tabs at the front, everyone else at the end.
+local function InsertTab(key)
+    if IndexOf(tabOrder, key) then return end
+    if ns.DB.pinned[key] then
+        local pos = 1
+        while tabOrder[pos] and ns.DB.pinned[tabOrder[pos]] do pos = pos + 1 end
+        tinsert(tabOrder, pos, key)
+    else
+        tinsert(tabOrder, key)
+    end
+end
+ns.InsertTab = InsertTab
+
 ns.ActivateTab = function(key)
     local f = windows[key] or CreateWindow(key)
-    if not IndexOf(tabOrder, key) then tinsert(tabOrder, key) end
+    InsertTab(key)
     local cur = ActiveFrame()
     if cur and cur ~= f then cur:Hide() end
     ns.activeKey = key
@@ -1053,7 +1077,7 @@ end
 -- Add a tab without switching to it (unless nothing is showing).
 local function AddTab(key)
     local f = windows[key] or CreateWindow(key)
-    if not IndexOf(tabOrder, key) then tinsert(tabOrder, key) end
+    InsertTab(key)
     local cur = ActiveFrame()
     if not cur or not cur:IsShown() then return ns.ActivateTab(key) end
     ns.RefreshTabs()
@@ -1104,6 +1128,7 @@ local function StyleTab(b)
     local r, g, bl = KeyRGB(b.key)
     local unread = f and f.unread or 0
     local name = ShortName(b.key)
+    if ns.DB.pinned[b.key] then name = ns.PIN_ICON .. name end
     b.badge:Hide()
     if active then
         b:SetBackdropColor(unpack(C.tabOn))
@@ -1565,8 +1590,110 @@ ns.NextUnread = function()
     if best then ns.OpenWindow(best) else Print("No unread whispers.") end
 end
 
--- Key bindings (Bindings.xml; Options > Keybindings > AddOns > DMme)
-BINDING_HEADER_DMME = "DMme"
+-- Show / hide the whisper windows. Hiding keeps the tabs (and, without
+-- tabs, remembers which windows were open), so the next press brings the
+-- same ones back. With nothing to bring back it opens the most recent
+-- conversation, or the whisper list when there are none yet.
+local toggledOff = {}
+ns.ToggleWindows = function()
+    local shown = {}
+    for key, f in pairs(windows) do
+        if f:IsShown() then shown[#shown + 1] = key end
+    end
+    if #shown > 0 then
+        toggledOff = shown
+        for _, key in ipairs(shown) do windows[key]:Hide() end
+        return
+    end
+
+    if ns.DB.tabbed then
+        local key = (ns.activeKey and IndexOf(tabOrder, ns.activeKey) and ns.activeKey) or tabOrder[1]
+        if key then ns.ActivateTab(key); return end
+    else
+        local any = false
+        for _, key in ipairs(toggledOff) do
+            local f = windows[key]
+            if f then f:Show(); f:Raise(); any = true end
+        end
+        toggledOff = {}
+        if any then return end
+    end
+
+    local best
+    for key, s in pairs(ns.session) do
+        if not best or (s.t or 0) > (ns.session[best].t or 0) then best = key end
+    end
+    if best then
+        if ns.DB.tabbed then
+            ns.ActivateTab(best)
+        else
+            GetWindow(best, true):Raise()
+        end
+    elseif ns.ToggleSessionPanel then
+        ns.ToggleSessionPanel()
+    end
+end
+
+-- Open the conversation with whoever last whispered you, ready to type.
+-- After a /reload: the most recent conversation whose last line was theirs.
+ns.ReplyLast = function()
+    local key = ns.lastIncoming
+    if not (key and ns.session[key]) then
+        key = nil
+        for k, s in pairs(ns.session) do
+            if s.incoming and (not key or (s.t or 0) > (ns.session[key].t or 0)) then key = k end
+        end
+    end
+    if not key then Print("No whispers to reply to yet."); return end
+    local f
+    if ns.DB.tabbed then f = ns.ActivateTab(key) else f = GetWindow(key, true) end
+    if f.minimized then SetMinimized(f, false) end
+    f:Raise()
+    f.edit:SetFocus()
+end
+
+-- The window a key binding acts on: the active tab, or without tabs the
+-- shown window under the mouse, else the one with the newest message.
+local function TargetWindow()
+    if ns.DB.tabbed then
+        local f = ActiveFrame()
+        return f and f:IsShown() and f or nil
+    end
+    local best
+    for key, f in pairs(windows) do
+        if f:IsShown() then
+            if f:IsMouseOver() then return f end
+            local t = ns.session[key] and ns.session[key].t or 0
+            if not best or t > best.t then best = { f = f, t = t } end
+        end
+    end
+    return best and best.f
+end
+
+ns.CloseCurrent = function()
+    local f = TargetWindow()
+    if not f then return end
+    if ns.DB.tabbed then ns.CloseTab(f.key) else f:Hide() end
+end
+
+ns.MinimizeCurrent = function()
+    local f = TargetWindow()
+    if f then SetMinimized(f, not f.minimized) end
+end
+
+-- Key bindings (Bindings.xml; Options > Keybindings > DMme)
+BINDING_NAME_DMME_TOGGLE = "Show / hide windows"
+BINDING_NAME_DMME_REPLY = "Reply to last whisper"
+BINDING_NAME_DMME_LIST = "Show / hide list"
+BINDING_NAME_DMME_CLOSE = "Close current tab / window"
+BINDING_NAME_DMME_MINIMIZE = "Minimize / restore window"
+BINDING_NAME_DMME_MARK_READ = "Mark all as read"
+function DMme_ToggleWindows() ns.ToggleWindows() end
+function DMme_ReplyLast() ns.ReplyLast() end
+function DMme_ToggleList() ns.ToggleSessionPanel() end
+function DMme_CloseCurrent() ns.CloseCurrent() end
+function DMme_MinimizeCurrent() ns.MinimizeCurrent() end
+function DMme_MarkAllRead() ns.ClearAllUnread() end
 BINDING_NAME_DMME_NEXT_TAB = "Next tab"
 BINDING_NAME_DMME_PREV_TAB = "Previous tab"
 BINDING_NAME_DMME_NEXT_UNREAD = "Next unread whisper"

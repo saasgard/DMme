@@ -57,6 +57,15 @@ local defaults = {
     classColors = true,   -- colour whispers/unread markers by class instead of pink
     profiles = {},        -- [fullName] = last /who result { level, race, class, classFile, guild, zone, t }
     theme = "modern",     -- "modern" (flat dark) or "classic" (game-style, like the guild chat window)
+    notices = true,       -- grey lines in the window: not delivered, away/busy replies, came online / went offline
+    replyKey = false,     -- the game's Reply key opens DMme instead of the main chat box
+    redirectWhisper = false, -- /w name typed in the main chat opens the DMme window instead
+    fadeIdle = false,     -- whisper windows turn see-through when nothing is happening
+    fadeAlpha = 0.4,      -- how visible a faded window is (0.1 - 0.9)
+    flashTaskbar = true,  -- flash the WoW taskbar icon on a new whisper (only when the game is in the background)
+    pinned = {},          -- [key] = true: kept at the top of the whisper list, tabs open first
+    busy = false,         -- auto-reply once to each person (turned off at every login)
+    busyText = "I'm busy right now, I'll get back to you soon.",
 }
 
 -- shared between files: ns.DB
@@ -1007,6 +1016,8 @@ end
 -- entry = { t = time(), i = incoming (true/nil), m = text, me = your character }
 local function FormatEntry(key, e, dim)
     local stamp = "|cff5f5f6b" .. date("%H:%M", e.t) .. "|r"
+    -- notice from the game (not delivered, away, came online...): grey, no name
+    if e.sys then return stamp .. "  |cff8a8a98" .. e.m .. "|r" end
     local name, r, g, b
     local bn = IsBN(key)
     if e.i then
@@ -1152,6 +1163,8 @@ ns.whoAlias = whoAlias
 ns.WHITE = WHITE
 ns.MEDIA_GEAR = MEDIA_GEAR
 ns.MEDIA_ICON = MEDIA_ICON
+-- marks pinned conversations in tabs and the whisper list (raid star: on every client)
+ns.PIN_ICON = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_1:0|t "
 ns.FLAT = FLAT
 ns.BACKDROP_TEMPLATE = BACKDROP_TEMPLATE
 ns.C = C

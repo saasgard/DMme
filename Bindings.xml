@@ -1,11 +1,32 @@
 <Bindings>
-    <Binding name="DMME_NEXT_TAB" header="DMME" category="ADDONS">
+    <Binding name="DMME_TOGGLE" category="DMme">
+        DMme_ToggleWindows()
+    </Binding>
+    <Binding name="DMME_REPLY" category="DMme">
+        DMme_ReplyLast()
+    </Binding>
+    <Binding name="DMME_LIST" category="DMme">
+        DMme_ToggleList()
+    </Binding>
+    <Binding name="DMME_NEXT_TAB" category="DMme">
         DMme_NextTab()
     </Binding>
-    <Binding name="DMME_PREV_TAB" category="ADDONS">
+    <Binding name="DMME_PREV_TAB" category="DMme">
         DMme_PrevTab()
     </Binding>
-    <Binding name="DMME_NEXT_UNREAD" category="ADDONS">
+    <Binding name="DMME_NEXT_UNREAD" category="DMme">
         DMme_NextUnread()
+    </Binding>
+    <Binding name="DMME_CLOSE" category="DMme">
+        DMme_CloseCurrent()
+    </Binding>
+    <Binding name="DMME_MINIMIZE" category="DMme">
+        DMme_MinimizeCurrent()
+    </Binding>
+    <Binding name="DMME_BUSY" category="DMme">
+        DMme_ToggleBusy()
+    </Binding>
+    <Binding name="DMME_MARK_READ" category="DMme">
+        DMme_MarkAllRead()
     </Binding>
 </Bindings>
