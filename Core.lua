@@ -903,10 +903,23 @@ local function FindURL(word)
     end
 end
 
+-- Community/guild invite links ("|HclubTicket:...|h") can carry any text, so
+-- scammers dress them up as items ("[Pristine Circlet]"). Always show what
+-- they really are: "[Community invite: Pristine Circlet]" in orange.
+local INVITE_COLOR = "|cffff8000"
+local function LabelInvites(text)
+    return (text:gsub("|HclubTicket:([^|]*)|h%[?(.-)%]?|h", function(ticket, shown)
+        shown = shown:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+        local label = shown ~= "" and ("Community invite: " .. shown) or "Community invite"
+        return INVITE_COLOR .. "|HclubTicket:" .. ticket .. "|h[" .. label .. "]|h|r"
+    end))
+end
+
 -- Turn web addresses in a message into clickable links. r, g, b = the
 -- message colour, restored after each link.
 local function Linkify(text, r, g, b)
     if not text or text == "" then return text end
+    text = LabelInvites(text)
     local reopen = "|c" .. Hex(r, g, b)
     return (text:gsub("%S+", function(word)
         local lead, url, trail = FindURL(word)
@@ -1122,6 +1135,16 @@ local function HandleLink(_, link, text, button)
     if url then
         ShowCopyBox(url, "Press |cffffd100Ctrl+C|r to copy the link, then paste it in your browser.",
             "Link copied - paste it in your browser with |cffffd100Ctrl+V|r.")
+        return
+    end
+    -- community invite: Blizzard's handler calls a protected function, which is
+    -- blocked when the click comes from an addon frame (ADDON_ACTION_FORBIDDEN).
+    -- These are also a common scam, so warn, then put a copy of the link in the
+    -- normal chat window: a click there runs through Blizzard's own (untainted)
+    -- chat frame, so the invite opens fine even if whispers are hidden there.
+    if link:find("^clubTicket:") then
+        Print("That is a |cffff8000Community invite|r, not an item. Scammers often disguise them this way. "
+            .. "If you trust the sender, click here to open it: |cffff8000|H" .. link .. "|h[Community invite]|h|r")
         return
     end
     local plain = button == "LeftButton" and not IsModifierKeyDown()

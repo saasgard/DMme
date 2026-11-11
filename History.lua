@@ -56,6 +56,7 @@ StaticPopupDialogs["DMME_DELETE_LOG"] = {
 local function PlainText(s)
     s = s or ""
     s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    s = s:gsub("|HclubTicket:[^|]*|h%[?(.-)%]?|h", "[Community invite: %1]")
     s = s:gsub("|H.-|h(.-)|h", "%1")
     s = s:gsub("|T.-|t", ""):gsub("|A.-|a", "")
     s = s:gsub("|K.-|k", "?")
