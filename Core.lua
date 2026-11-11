@@ -1029,8 +1029,12 @@ end
 -- entry = { t = time(), i = incoming (true/nil), m = text, me = your character }
 local function FormatEntry(key, e, dim)
     local stamp = "|cff5f5f6b" .. date("%H:%M", e.t) .. "|r"
-    -- notice from the game (not delivered, away, came online...): grey, no name
-    if e.sys then return stamp .. "  |cff8a8a98" .. e.m .. "|r" end
+    -- notice from the game (not delivered, away, went offline...): grey, no name.
+    -- "came online" is green, so it doesn't read as offline at a glance.
+    if e.sys then
+        local color = e.m:find(" came online%.$") and "|cff40c040" or "|cff8a8a98"
+        return stamp .. "  " .. color .. e.m .. "|r"
+    end
     local name, r, g, b
     local bn = IsBN(key)
     if e.i then

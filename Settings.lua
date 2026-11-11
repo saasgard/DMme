@@ -579,7 +579,7 @@ local function CreateSettings()
         function() return ns.DB.replyKey end, function(v) ns.DB.replyKey = v; ns.ApplyReplyKey() end)
     Check("Move /w to DMme", "Typing /w name in the main chat box opens the DMme\nwindow for that player instead.",
         function() return ns.DB.redirectWhisper end, function(v) ns.DB.redirectWhisper = v end)
-    Check("Show notices in conversations", "Grey lines in the window when a whisper wasn't delivered,\nwhen they reply that they're away or busy, and when they\ncome online or go offline.",
+    Check("Show notices in conversations", "Short lines in the window when a whisper wasn't delivered,\nwhen they reply that they're away or busy, and when they\ncome online or go offline.",
         function() return ns.DB.notices end, function(v) ns.DB.notices = v end)
 
     Section("Busy auto-reply")
