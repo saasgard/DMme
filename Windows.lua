@@ -1483,8 +1483,10 @@ ns.RefreshTabs = function()
         tabStrip:SetScript("OnMouseWheel", function(_, delta) ns.CycleTab(-delta) end)
     end
     local host = ActiveFrame()
-    if not ns.DB.tabbed or not host or #tabOrder == 0 then
+    -- a lone conversation needs no tab: the strip appears from two tabs up
+    if not ns.DB.tabbed or not host or #tabOrder < 2 then
         tabStrip:Hide()
+        if ns.UpdateSessionUI then ns.UpdateSessionUI() end
         return
     end
     tabStrip:SetParent(host)
@@ -1498,7 +1500,7 @@ ns.RefreshTabs = function()
 
     local n, gap = #tabOrder, 2
     local avail = host:GetWidth()
-    local widths, total = {}, 0
+    local widths = {}
     for i, key in ipairs(tabOrder) do
         local b = GetTabButton(i)
         b.key = key
@@ -1507,9 +1509,8 @@ ns.RefreshTabs = function()
         local badgeW = b.badge:IsShown() and (b.badge:GetWidth() + 4) or 0
         local w = math.max(60, math.min(140 + badgeW, b.label:GetStringWidth() + 18 + badgeW))
         widths[i] = w
-        total = total + w
     end
-    -- Under TAB_MENU_AT tabs: every tab gets a button (squeezed if needed).
+    -- Under TAB_MENU_AT tabs: every tab gets a button.
     -- From TAB_MENU_AT up: tabs keep their width, as many as fit next to the
     -- list button (always including the active one); the rest are in the list.
     local useMenu = n >= TAB_MENU_AT
@@ -1543,16 +1544,16 @@ ns.RefreshTabs = function()
         for i = 1, n do shown[i] = i end
     end
 
+    -- the shown tabs share the row evenly, filling the window's width
     local k = #shown
-    local squeeze = useMenu or (total + gap * (n - 1)) > avail
     local even = math.floor((room - gap * (k - 1)) / k)
     local x = 0
     local isShown = {}
     for j, i in ipairs(shown) do
         isShown[i] = true
         local b = tabButtons[i]
-        local w = squeeze and even or widths[i]
-        if useMenu and j == k then w = room - x end -- last tab takes the rounding leftover
+        local w = even
+        if j == k then w = room - x end -- last tab takes the rounding leftover
         b:SetWidth(w)
         b:ClearAllPoints()
         b:SetPoint("BOTTOMLEFT", tabStrip, "BOTTOMLEFT", x, 0)
