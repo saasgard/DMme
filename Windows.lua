@@ -1660,7 +1660,8 @@ end
 
 -- Open the conversation with whoever last whispered you, ready to type.
 -- After a /reload: the most recent conversation whose last line was theirs.
-ns.ReplyLast = function()
+-- With text (/dm r <message>): also send it to them.
+ns.ReplyLast = function(text)
     local key = ns.lastIncoming
     if not (key and ns.session[key]) then
         key = nil
@@ -1673,6 +1674,7 @@ ns.ReplyLast = function()
     if ns.DB.tabbed then f = ns.ActivateTab(key) else f = GetWindow(key, true) end
     if f.minimized then SetMinimized(f, false) end
     f:Raise()
+    if type(text) == "string" and text:match("%S") then SendWhisperTo(key, text) end
     f.edit:SetFocus()
 end
 

@@ -5,6 +5,7 @@ local ADDON, ns = ...
 
 local defaults = {
     hideFromChat = false, -- hide whispers from the normal chat frames
+    combatChat = true,    -- ...but while in combat, still show them in the normal chat
     sound = true,         -- play a sound on incoming whispers
     soundKit = "TELL_MESSAGE", -- which sound (a SOUNDKIT name, see SOUND_OPTIONS)
     soundKitBN = "SAME",  -- Battle.net whisper sound ("SAME" = same as soundKit)

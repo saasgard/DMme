@@ -762,6 +762,9 @@ if AddFilter then
             local flags, guid = select(4, ...), select(10, ...)
             if not AnySecret(guid) and IsSpam(FullName(sender), msg, guid, flags) then return true end
         end
+        -- in combat: let them through to the main chat too, so they're seen
+        -- while windows are held back. Only returns false: nothing protected.
+        if ns.DB.combatChat and InCombatLockdown and InCombatLockdown() then return false end
         return ns.DB.hideFromChat
     end
     AddFilter("CHAT_MSG_WHISPER", filter)

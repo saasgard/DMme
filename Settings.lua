@@ -472,6 +472,8 @@ local function CreateSettings()
         function() return ns.DB.combatHold end, function(v) ns.DB.combatHold = v end)
     Check("Hide whispers from the main chat", "Whispers only show in DMme, not in your normal chat tabs.",
         function() return ns.DB.hideFromChat end, function(v) ns.DB.hideFromChat = v end)
+    Check("   ...but show them there in combat", "With whispers hidden from the main chat, still let them\nthrough to your normal chat tabs while you're in combat,\nso you see them without a window popping open.",
+        function() return ns.DB.combatChat end, function(v) ns.DB.combatChat = v end)
     Check("Fade when idle", "Windows turn see-through after a few seconds with no new\nmessages, and come back when you hover over them or type.",
         function() return ns.DB.fadeIdle end, function(v) ns.DB.fadeIdle = v; ns.ApplyFade() end)
     Stepper("Faded window visibility", function() return math.floor(ns.DB.fadeAlpha * 100 + 0.5) .. "%" end,
@@ -577,7 +579,7 @@ local function CreateSettings()
     Section("Main chat")
     Check("Reply key opens DMme", "The game's Reply key (R by default) opens the conversation\nwith whoever last whispered you in DMme, instead of the main chat box.",
         function() return ns.DB.replyKey end, function(v) ns.DB.replyKey = v; ns.ApplyReplyKey() end)
-    Check("Move /w to DMme", "Typing /w name in the main chat box opens the DMme\nwindow for that player instead.",
+    Check("Move /w and /r to DMme", "Typing /w name or /r in the main chat box opens the DMme\nwindow for that player instead.",
         function() return ns.DB.redirectWhisper end, function(v) ns.DB.redirectWhisper = v end)
     Check("Show notices in conversations", "Short lines in the window when a whisper wasn't delivered,\nwhen they reply that they're away or busy, and when they\ncome online or go offline.",
         function() return ns.DB.notices end, function(v) ns.DB.notices = v end)
@@ -766,6 +768,8 @@ SlashCmdList.DMME = function(input)
     elseif cmd == "tabs" then
         SetTabbed(not ns.DB.tabbed)
         if ns.settings and ns.settings:IsShown() then ns.settings:Refresh() end
+    elseif cmd == "r" or cmd == "reply" then
+        ns.ReplyLast(rest)
     elseif cmd == "open" or cmd == "w" then
         if rest ~= "" then ns.OpenWindow(rest) else Print("Usage: /dm open <name>") end
     elseif cmd == "mute" then
@@ -872,6 +876,7 @@ SlashCmdList.DMME = function(input)
         Print("  /dm detach - detach/attach the minimap button")
         Print("  /dm button [size|reset] - floating button: show/hide, resize, or reset")
         Print("  /dm open <name> - open a whisper window")
+        Print("  /dm r [message] - reply to the last whisper")
         Print("  /dm ginvite <name> - show the /ginvite command to copy")
         Print("  /dm mute <name> [1h|24h|week|month|forever] - silence someone's whispers")
         Print("  /dm unmute <name> | /dm muted - undo a mute, list muted players")
