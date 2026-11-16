@@ -393,6 +393,26 @@ local function SavePosition(f)
     end
 end
 
+-- Moving and resizing go through these so the frame that started moving is
+-- always the one that stops. If a stop goes to a different frame, or never
+-- arrives (the window was hidden mid-drag: tab switch, Escape, closing),
+-- WoW thinks the old frame is still being dragged and the next drag makes
+-- the window jump until a /reload.
+local movingFrame
+local function BeginMove(f, sizePoint)
+    if movingFrame and movingFrame ~= f then movingFrame:StopMovingOrSizing() end
+    movingFrame = f
+    if sizePoint then f:StartSizing(sizePoint) else f:StartMoving() end
+end
+
+local function EndMove()
+    local f = movingFrame
+    if not f then return end
+    movingFrame = nil
+    f:StopMovingOrSizing()
+    SavePosition(f)
+end
+
 -- Place a window: the shared tabbed spot, or its own saved spot.
 local function ApplyPosition(f)
     local p = ns.DB.tabbed and ns.DB.tabPos or (not ns.DB.tabbed and ns.DB.positions[f.key])
@@ -694,8 +714,8 @@ local function CreateWindow(key)
         f:SetMaxResize(900, 700)
     end
     f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); SavePosition(self) end)
+    f:SetScript("OnDragStart", function(self) BeginMove(self) end)
+    f:SetScript("OnDragStop", EndMove)
     f:SetScript("OnMouseDown", function(self) self:Raise(); StopFlash(self) end)
     f:SetScript("OnEnter", function(self) if not self.minimized then StopFlash(self) end end)
 
@@ -792,10 +812,9 @@ local function CreateWindow(key)
     nameBtn:RegisterForDrag("LeftButton")
     nameBtn:SetScript("OnClick", function() ShowPlayerMenu(f.key) end)
     nameBtn:SetScript("OnMouseDown", function() f:Raise(); StopFlash(f) end)
-    nameBtn:SetScript("OnDragStart", function() f:StartMoving() end)
+    nameBtn:SetScript("OnDragStart", function() BeginMove(f) end)
     nameBtn:SetScript("OnDragStop", function()
-        f:StopMovingOrSizing()
-        SavePosition(f)
+        EndMove()
         if ns.DB.tabbed then ns.RefreshTabs() end
     end)
     nameBtn:SetScript("OnEnter", function(self)
@@ -1021,8 +1040,8 @@ local function CreateWindow(key)
     grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-    grip:SetScript("OnMouseDown", function() f:StartSizing("BOTTOMRIGHT") end)
-    grip:SetScript("OnMouseUp", function() f:StopMovingOrSizing(); SavePosition(f) end)
+    grip:SetScript("OnMouseDown", function() BeginMove(f, "BOTTOMRIGHT") end)
+    grip:SetScript("OnMouseUp", EndMove)
 
     -- Escape closes the window
     tinsert(UISpecialFrames, f:GetName())
@@ -1043,6 +1062,8 @@ local function CreateWindow(key)
     if not ns.DB.tabbed and pos and pos[6] then SetMinimized(f, true) end
     f:Hide() -- callers decide when to show it
     f:HookScript("OnHide", function()
+        -- hidden mid-drag: finish the move, or WoW keeps it "moving"
+        if movingFrame == f then EndMove() end
         if ns.UpdateSessionUI then ns.UpdateSessionUI() end
         if ns.replyMenu and ns.replyMenu.owner == f then ns.replyMenu:Hide() end
         if Emoji.picker and Emoji.picker.owner == f then Emoji.picker:Hide() end
@@ -1461,11 +1482,8 @@ local function GetTabMenuButton()
     end)
     b:SetScript("OnLeave", function(self) StyleTabMenuBtn(self); GameTooltip:Hide() end)
     -- dragging it moves the whole tabbed window, like a tab
-    b:SetScript("OnDragStart", function() local f = ActiveFrame(); if f then f:StartMoving() end end)
-    b:SetScript("OnDragStop", function()
-        local f = ActiveFrame()
-        if f then f:StopMovingOrSizing(); SavePosition(f) end
-    end)
+    b:SetScript("OnDragStart", function() local f = ActiveFrame(); if f then BeginMove(f) end end)
+    b:SetScript("OnDragStop", EndMove)
     tabMenuBtn = b
     return b
 end
