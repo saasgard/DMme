@@ -384,35 +384,84 @@ end
 local COMPACT_HEADER_H = 26
 local function HeaderH() return ns.DB.compact and COMPACT_HEADER_H or HEADER_H end
 
+-- Screen size in f's own coordinates (f may have its own scale).
+local function ScreenSize(f)
+    local s = UIParent:GetEffectiveScale() / f:GetEffectiveScale()
+    return UIParent:GetWidth() * s, UIParent:GetHeight() * s
+end
+
+-- Anchor f's top-left corner at (left, top), measured from the screen's
+-- bottom-left like GetLeft() / GetTop().
+local function PlaceTopLeft(f, left, top)
+    local _, sh = ScreenSize(f)
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", left, top - sh)
+end
+
+-- Saved from where the window actually is on screen, always as a TOPLEFT
+-- anchor, so it is put back exactly there (ApplyPosition anchors a point
+-- to the same point on UIParent).
 local function SavePosition(f)
-    local point, _, _, x, y = f:GetPoint(1)
-    if not point then return end
+    local left, top = f:GetLeft(), f:GetTop()
+    if not (left and top) then return end
+    local _, sh = ScreenSize(f)
+    local x, y = left, top - sh
     local w, h = f:GetWidth(), f.minimized and f.restoreHeight or f:GetHeight()
     if ns.DB.tabbed then
-        ns.DB.tabPos = { point, x, y, w, h }          -- one shared spot for the tabbed window
+        ns.DB.tabPos = { "TOPLEFT", x, y, w, h }          -- one shared spot for the tabbed window
     else
-        ns.DB.positions[f.key] = { point, x, y, w, h, f.minimized }
+        ns.DB.positions[f.key] = { "TOPLEFT", x, y, w, h, f.minimized }
     end
 end
 
--- Moving and resizing go through these so the frame that started moving is
--- always the one that stops. If a stop goes to a different frame, or never
--- arrives (the window was hidden mid-drag: tab switch, Escape, closing),
--- WoW thinks the old frame is still being dragged and the next drag makes
--- the window jump until a /reload.
-local movingFrame
-local function BeginMove(f, sizePoint)
-    if movingFrame and movingFrame ~= f then movingFrame:StopMovingOrSizing() end
-    movingFrame = f
-    if sizePoint then f:StartSizing(sizePoint) else f:StartMoving() end
-end
+-- Moving and resizing are done here, by following the cursor, instead of
+-- WoW's StartMoving / StartSizing. WoW's drag state could get stuck during
+-- a long session and make the window jump on the next drag until a /reload.
+local MIN_W, MIN_H, MAX_W, MAX_H = 380, 170, 900, 700
+local mover = CreateFrame("Frame")
+local drag -- { f, sizing, cx, cy, left, top, w, h } while a drag is on
 
 local function EndMove()
-    local f = movingFrame
-    if not f then return end
-    movingFrame = nil
-    f:StopMovingOrSizing()
-    SavePosition(f)
+    local d = drag
+    if not d then return end
+    drag = nil
+    mover:SetScript("OnUpdate", nil)
+    SavePosition(d.f)
+end
+
+local function DragUpdate()
+    local d = drag
+    if not d or not IsMouseButtonDown("LeftButton") then EndMove(); return end
+    local f = d.f
+    local s = f:GetEffectiveScale()
+    local cx, cy = GetCursorPosition()
+    local dx, dy = cx / s - d.cx, cy / s - d.cy
+    local sw, sh = ScreenSize(f)
+    if d.sizing then
+        -- top-left stays put; the bottom-right corner follows the cursor
+        local w = math.max(MIN_W, math.min(MAX_W, d.w + dx, sw - d.left))
+        local h = math.max(MIN_H, math.min(MAX_H, d.h - dy, d.top))
+        f:SetSize(w, h)
+    else
+        local w, h = f:GetWidth(), f:GetHeight()
+        local left = math.max(0, math.min(d.left + dx, sw - w))
+        local top = math.min(sh, math.max(d.top + dy, h))
+        PlaceTopLeft(f, left, top)
+    end
+end
+
+local function BeginMove(f, sizing)
+    if drag then EndMove() end
+    local left, top = f:GetLeft(), f:GetTop()
+    if not (left and top) then return end
+    local s = f:GetEffectiveScale()
+    local cx, cy = GetCursorPosition()
+    drag = {
+        f = f, sizing = sizing, cx = cx / s, cy = cy / s,
+        left = left, top = top, w = f:GetWidth(), h = f:GetHeight(),
+    }
+    PlaceTopLeft(f, left, top) -- start from a plain top-left anchor
+    mover:SetScript("OnUpdate", DragUpdate)
 end
 
 -- Place a window: the shared tabbed spot, or its own saved spot.
@@ -763,14 +812,10 @@ local function CreateWindow(key)
     f:SetClampedToScreen(true)
     f:SetScale(ns.DB.scale or 1)
     f:EnableMouse(true)
+    -- forget any spot WoW remembered for this frame from older versions
+    -- (moving is done by DMme now, see BeginMove)
     f:SetMovable(true)
-    f:SetResizable(true)
-    if f.SetResizeBounds then
-        f:SetResizeBounds(380, 170, 900, 700)
-    elseif f.SetMinResize then
-        f:SetMinResize(380, 170)
-        f:SetMaxResize(900, 700)
-    end
+    if f.SetUserPlaced then f:SetUserPlaced(false) end
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", function(self) BeginMove(self) end)
     f:SetScript("OnDragStop", EndMove)
@@ -1187,8 +1232,8 @@ local function CreateWindow(key)
     if not ns.DB.tabbed and pos and pos[6] then SetMinimized(f, true) end
     f:Hide() -- callers decide when to show it
     f:HookScript("OnHide", function()
-        -- hidden mid-drag: finish the move, or WoW keeps it "moving"
-        if movingFrame == f then EndMove() end
+        -- hidden mid-drag (tab switch, Escape): end the drag and keep the spot
+        if drag and drag.f == f then EndMove() end
         if ns.ForgetHeld then ns.ForgetHeld(f.key) end -- closed in combat: stays closed
         if ns.UpdateSessionUI then ns.UpdateSessionUI() end
         if ns.replyMenu and ns.replyMenu.owner == f then ns.replyMenu:Hide() end
