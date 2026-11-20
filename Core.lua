@@ -18,6 +18,7 @@ local defaults = {
     logEnabled = false,   -- OPT-IN: save whispers to disk (SavedVariables)
     logMax = 2000,        -- max saved messages per contact
     logKeep = "forever",  -- how long history is kept: day / week / month / year / forever
+    logWho = "all",       -- whose whispers are saved: "all", or "friends" (friends, guild, Battle.net, pinned)
     hintShown = false,
     scale = 1,
     width = 380,
@@ -55,6 +56,8 @@ local defaults = {
     log = {},             -- [fullName] = { last = time, entries = { { t, i, m, me } } }
     positions = {},       -- [fullName] = { point, x, y, w, h, minimized }
     guids = {},           -- [fullName] = guid (for class colour / icon)
+    seen = {},            -- [fullName] = last time you whispered (old guids/profiles/positions are dropped after 30 days)
+    spamLog = {},         -- blocked whispers from the last 7 days: { t, key, text, word | muted }
     classColors = true,   -- colour whispers/unread markers by class instead of pink
     profiles = {},        -- [fullName] = last /who result { level, race, class, classFile, guild, zone, t }
     theme = "modern",     -- "modern" (flat dark) or "classic" (game-style, like the guild chat window)
@@ -101,7 +104,7 @@ local function KeyUnread(key)
 end
 -- Players we sent a /who for from a DMme button: [key] = time
 local whoPending = {}
--- /who sent for a Battle.net friend's character: [characterKey] = "BN:..." key
+-- /who sent for a Battle.net friend's character: [characterKey] = { key = "BN:...", t = time }
 local whoAlias = {}
 
 ----------------------------------------------------------------------
@@ -516,7 +519,8 @@ local function ShowCopyBox(text, hint, doneMsg)
         end)
         eb:SetScript("OnMouseUp", function(self) self:HighlightText() end)
         eb:SetScript("OnKeyDown", function(_, key)
-            if key == "C" and IsControlKeyDown() then
+            -- Ctrl+C, or Cmd+C on a Mac
+            if key == "C" and (IsControlKeyDown() or (IsMetaKeyDown and IsMetaKeyDown())) then
                 C_Timer.After(0.05, function()
                     b:Hide()
                     Print(b.doneMsg or "Copied. Now press |cffffd100Enter|r, |cffffd100Ctrl+V|r, |cffffd100Enter|r.")
@@ -579,7 +583,15 @@ end
 -- level, race, class and zone (works across realms and factions, unlike /who).
 -- Run a /who for a character name (results are picked up by StoreProfile).
 local function SendWhoFor(charName)
-    whoPending[FullName(charName)] = time()
+    -- forget lookups that never got an answer (offline, other faction...)
+    local now = time()
+    for k, t in pairs(whoPending) do
+        if now - t > 60 then whoPending[k] = nil end
+    end
+    for k, a in pairs(whoAlias) do
+        if now - a.t > 60 then whoAlias[k] = nil end
+    end
+    whoPending[FullName(charName)] = now
     local q = 'n-"' .. ShortName(charName) .. '"'
     if C_FriendList and C_FriendList.SendWho then
         C_FriendList.SendWho(q)
@@ -614,8 +626,8 @@ local function BNWho(key)
     -- it's copied into this Battle.net conversation (see StoreProfile).
     local c = GetBNCharacter(key)
     if c then
-        whoAlias[FullName(c)] = key
         SendWhoFor(c)
+        whoAlias[FullName(c)] = { key = key, t = time() }
         return
     end
 
@@ -684,6 +696,50 @@ local function KeyInfo(key)
         locRace = locRace or p.race
     end
     return classFile, locClass, locRace
+end
+
+-- true if the player `key` is in your party or raid. Compares whole names
+-- (with realm), so a stranger with the same name as a groupmate on another
+-- realm doesn't count.
+local function InMyGroup(key)
+    if not key or IsBN(key) then return false end
+    if not (IsInGroup and GetNumGroupMembers) then
+        -- older clients: the game's own name check
+        local short = ShortName(key)
+        local inParty = UnitInParty and UnitInParty(short)
+        local inRaid = UnitInRaid and UnitInRaid(short)
+        return (inParty or inRaid) and true or false
+    end
+    if not IsInGroup() then return false end
+    local raid = IsInRaid and IsInRaid()
+    local n = raid and GetNumGroupMembers() or (GetNumSubgroupMembers and GetNumSubgroupMembers() or 4)
+    for i = 1, n do
+        local name = ns.UnitWhisperName((raid and "raid" or "party") .. i)
+        if name and FullName(name) == key then return true end
+    end
+    return false
+end
+
+-- true for people you know: Battle.net friends, friends, guild members and
+-- pinned conversations. `guid` is optional (the last one seen is used).
+local function IsFriendly(key, guid)
+    if not key then return false end
+    if IsBN(key) or (ns.DB and ns.DB.pinned[key]) then return true end
+    guid = guid or (ns.DB and ns.DB.guids[key])
+    if guid then
+        if C_FriendList and C_FriendList.IsFriend then
+            local ok, friend = pcall(C_FriendList.IsFriend, guid)
+            if ok and friend then return true end
+        end
+        if IsGuildMember then
+            local ok, member = pcall(IsGuildMember, guid)
+            if ok and member then return true end
+        end
+    elseif C_FriendList and C_FriendList.GetFriendInfo then
+        local ok, info = pcall(C_FriendList.GetFriendInfo, key)
+        if ok and info then return true end
+    end
+    return false
 end
 
 -- Name colour for a conversation: Battle.net blue, else class colour.
@@ -784,13 +840,23 @@ end
 ----------------------------------------------------------------------
 -- Log (opt-in, saved to SavedVariables)
 ----------------------------------------------------------------------
+-- Saved for this person? (Settings > History > "Save whispers with")
+local function ShouldLog(key)
+    if not ns.DB.logEnabled then return false end
+    return ns.DB.logWho ~= "friends" or IsFriendly(key)
+end
+
 local function LogEntry(key, entry)
-    if not ns.DB.logEnabled then return end
+    if not ShouldLog(key) then return end
     local log = ns.DB.log[key]
-    if not log then log = { entries = {} }; ns.DB.log[key] = log end
+    if not log then
+        if entry.sys then return end -- a notice alone doesn't start a saved conversation
+        log = { entries = {} }
+        ns.DB.log[key] = log
+    end
     local e = log.entries
     e[#e + 1] = entry
-    log.last = entry.t
+    if not entry.sys then log.last = entry.t end -- notices don't move it up the History list
     local over = #e - (ns.DB.logMax or 2000)
     for _ = 1, over do table.remove(e, 1) end
 end
@@ -882,6 +948,10 @@ local URL_TLDS = {
     com = true, net = true, org = true, gg = true, tv = true, io = true,
     eu = true, uk = true, info = true, app = true, dev = true, ly = true,
     gl = true, be = true, me = true, co = true, us = true, xyz = true,
+    -- country endings (not "it", "to", "es": too often normal words, "do.it")
+    de = true, fr = true, nl = true, se = true, no = true, dk = true, fi = true,
+    pl = true, ru = true, cz = true, at = true, ch = true, ca = true, au = true,
+    nz = true, br = true, jp = true, kr = true, tw = true, cn = true,
 }
 local URL_COLOR = "|cff4fb4ff"
 
@@ -1025,6 +1095,30 @@ function Emoji.Render(text)
         if name then return Emoji.Tex(name) .. trail end
     end)
     return text
+end
+
+-- Remove colour codes, textures and link wrappers ("|Hitem:..|h[Sword]|h" -> "[Sword]").
+local function PlainText(s)
+    s = s or ""
+    s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    s = s:gsub("|HclubTicket:[^|]*|h%[?(.-)%]?|h", "[Community invite: %1]")
+    s = s:gsub("|H.-|h(.-)|h", "%1")
+    s = s:gsub("|T.-|t", ""):gsub("|A.-|a", "")
+    s = s:gsub("|K.-|k", "?")
+    s = s:gsub("||", "|")
+    return s
+end
+
+-- A message's plain text in lower case, for searching. Cached per entry
+-- (entries never change), so a search doesn't redo it for every message.
+local lowerCache = setmetatable({}, { __mode = "k" })
+local function SearchText(e)
+    local s = lowerCache[e]
+    if not s then
+        s = PlainText(e.m):lower()
+        lowerCache[e] = s
+    end
+    return s
 end
 
 -- entry = { t = time(), i = incoming (true/nil), m = text, me = your character }
@@ -1229,6 +1323,14 @@ ns.UIAccent = UIAccent
 ns.OnUIAccent = OnUIAccent
 ns.ApplyUIAccent = ApplyUIAccent
 ns.KeyInfo = KeyInfo
+ns.InMyGroup = InMyGroup
+ns.IsFriendly = IsFriendly
+ns.ShouldLog = ShouldLog
+ns.PlainText = PlainText
+ns.SearchText = SearchText
+ns.FindURL = FindURL
+ns.LabelInvites = LabelInvites
+ns.Linkify = Linkify
 ns.KeyRGB = KeyRGB
 ns.ClassFileFromName = ClassFileFromName
 ns.Colorize = Colorize

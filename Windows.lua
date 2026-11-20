@@ -25,6 +25,7 @@ local KeyHighlight = ns.KeyHighlight
 local KeyInfo = ns.KeyInfo
 local KeyRGB = ns.KeyRGB
 local KeyUnread = ns.KeyUnread
+local L = ns.L
 local MEDIA_GEAR = ns.MEDIA_GEAR
 local OnTheme = ns.OnTheme
 local PartyInviteName = ns.PartyInviteName
@@ -44,10 +45,11 @@ local windows = ns.windows
 ----------------------------------------------------------------------
 -- Widgets
 ----------------------------------------------------------------------
+-- title / text are English; translated through ns.L (Locales.lua)
 local function ShowTooltip(owner, title, text)
     GameTooltip:SetOwner(owner, "ANCHOR_TOP")
-    GameTooltip:SetText(title, 1, 1, 1)
-    if text then GameTooltip:AddLine(text, nil, nil, nil, true) end
+    GameTooltip:SetText(L[title], 1, 1, 1)
+    if text then GameTooltip:AddLine(L[text], nil, nil, nil, true) end
     GameTooltip:Show()
 end
 
@@ -69,7 +71,7 @@ local function FlatButton(parent, text, opts)
     b.cwFlat = true
     b.label = b:CreateFontString(nil, "OVERLAY", opts.font or "GameFontHighlightSmall")
     b.label:SetPoint("CENTER")
-    b.label:SetText(text)
+    b.label:SetText(L[text])
     b:SetSize(opts.width or (b.label:GetStringWidth() + 18), opts.height or 20)
     OnTheme(function(classic)
         b:SetBackdrop((classic and not opts.bare) and TOOLTIP_BD or FLAT)
@@ -514,8 +516,14 @@ local function LayoutButtons(f)
     f.inset:SetPoint("TOPLEFT", f.body, "TOPLEFT", pad, prevText and (compact and -28 or -33) or -pad)
     f.inset:SetPoint("BOTTOMRIGHT", f.body, "BOTTOMRIGHT", -pad, pad + inputH + gap)
     local mx, my = compact and 4 or 7, compact and 3 or 6
+    local searching = f.searchBar and f.searchBar:IsShown()
+    if f.searchBar then
+        f.searchBar:ClearAllPoints()
+        f.searchBar:SetPoint("TOPLEFT", mx - 2, -(my - 2))
+        f.searchBar:SetPoint("TOPRIGHT", -(mx - 2), -(my - 2))
+    end
     f.msg:ClearAllPoints()
-    f.msg:SetPoint("TOPLEFT", mx, -my)
+    f.msg:SetPoint("TOPLEFT", mx, -(my + (searching and 24 or 0)))
     f.msg:SetPoint("BOTTOMRIGHT", -mx, my)
     f.inputBox:ClearAllPoints()
     f.inputBox:SetPoint("BOTTOMLEFT", pad, pad)
@@ -641,6 +649,20 @@ local function DayBreak(f, t)
     f.lastDay = d
 end
 
+-- After a refill or a move (search bar opened / closed) the message frame
+-- can keep stale line positions until it is resized, drawing lines above
+-- its top edge; force a relayout now and once more on the next frame.
+local function RelayoutMessages(msg)
+    local function relayout()
+        if msg.MarkLayoutDirty then msg:MarkLayoutDirty() end
+        if msg.MarkDisplayDirty then msg:MarkDisplayDirty() end
+        if msg.RefreshLayout then msg:RefreshLayout() end
+        msg:ScrollToBottom()
+    end
+    relayout()
+    if C_Timer then C_Timer.After(0, relayout) end
+end
+
 local function FillMessages(f)
     local key, msg = f.key, f.msg
     msg:Clear()
@@ -649,7 +671,29 @@ local function FillMessages(f)
     local lines = s and s.lines
     local sessionStart = lines and lines[1] and lines[1].t or math.huge
     local log = ns.DB.logEnabled and ns.DB.log[key]
-    if log and #log.entries > 0 then
+    local q = f.searchQuery
+    if q then
+        -- searching this window: only matching messages, from all saved
+        -- history (dimmed) and this session
+        local found = 0
+        local function consider(e, dim)
+            if not e.sys and ns.SearchText(e):find(q, 1, true) then
+                DayBreak(f, e.t)
+                msg:AddMessage(FormatEntry(key, e, dim))
+                found = found + 1
+            end
+        end
+        if log then
+            for _, e in ipairs(log.entries) do
+                if e.t < sessionStart then consider(e, true) end
+            end
+        end
+        for _, e in ipairs(lines or {}) do consider(e) end
+        if found == 0 then
+            msg:AddMessage("|cff8a8a98No messages with \"" .. q:gsub("|", "||") .. "\".|r")
+        end
+        f.searchBar.count:SetText(found == 1 and "1 found" or (found .. " found"))
+    elseif log and #log.entries > 0 then
         local older = {}
         for _, e in ipairs(log.entries) do
             if e.t < sessionStart then older[#older + 1] = e end
@@ -662,23 +706,37 @@ local function FillMessages(f)
             msg:AddMessage("|cff4a4a55-------------  earlier  -------------|r")
         end
     end
-    if lines then
+    if lines and not q then
         for _, e in ipairs(lines) do
             DayBreak(f, e.t)
             msg:AddMessage(FormatEntry(key, e))
         end
     end
     msg:ScrollToBottom()
-    -- after Clear() + refill the frame can keep stale line positions until it
-    -- is resized; force a relayout now and once more on the next frame
-    local function relayout()
-        if msg.MarkLayoutDirty then msg:MarkLayoutDirty() end
-        if msg.MarkDisplayDirty then msg:MarkDisplayDirty() end
-        if msg.RefreshLayout then msg:RefreshLayout() end
-        msg:ScrollToBottom()
+    RelayoutMessages(msg)
+end
+
+-- Open / close the search bar at the top of window f (Search button, Ctrl+F).
+-- Closing it brings back the normal conversation.
+local function SetSearch(f, open)
+    local bar = f.searchBar
+    if open then
+        if f.minimized then SetMinimized(f, false) end
+        bar:Show()
+        LayoutButtons(f)
+        RelayoutMessages(f.msg)
+        bar.edit:SetFocus()
+        bar.edit:HighlightText()
+        return
     end
-    relayout()
-    if C_Timer then C_Timer.After(0, relayout) end
+    if bar.timer then bar.timer:Cancel(); bar.timer = nil end
+    local was = f.searchQuery
+    f.searchQuery = nil
+    bar.edit:SetText("")
+    bar.count:SetText("")
+    bar:Hide()
+    LayoutButtons(f)
+    if was then FillMessages(f) else RelayoutMessages(f.msg) end
 end
 
 -- Re-colour everything after a colour-related change.
@@ -888,9 +946,11 @@ local function CreateWindow(key)
         { "guild", "Guild Invite", "Guild Invite", "Shows the /ginvite command ready to copy and paste in chat.\n(The game only allows guild invites you send yourself.)", function() GuildInviteName(f.key) end, "Interface\\GossipFrame\\TabardGossipIcon" },
         { "party", "Invite", "Party Invite", "Invite this player to your group.", function() PartyInviteName(f.key) end, "Interface\\GossipFrame\\BattleMasterGossipIcon" },
         { "who", "Who", "Who", "Look up level, class and zone.", function() WhoName(f.key) end, "Interface\\Common\\UI-Searchbox-Icon" },
-        { "history", "History", "Whisper History", "Browse saved whispers with this player.", function() ns.ShowHistory(f.key) end, "Interface\\GossipFrame\\PetitionGossipIcon" },
-        { "replies", "Replies", "Quick replies", "Send a saved reply with one click,\nor save what you have typed for next time.", function(self) ToggleReplies(f, self) end, "Interface\\GossipFrame\\GossipGossipIcon" },
-    }
+        { "history", "History", "History and search", "Left-click: search this conversation, including saved history.\nRight-click: open the History window.\n(Ctrl+F in the text box also opens search.)",
+            function(_, button)
+                if button == "RightButton" then ns.ShowHistory(f.key) else SetSearch(f, not f.searchBar:IsShown()) end
+            end, "Interface\\GossipFrame\\PetitionGossipIcon" },
+        { "replies", "Replies", "Quick replies", "Send a saved reply with one click,\nor save what you have typed for next time.", function(self) ToggleReplies(f, self) end, "Interface\\GossipFrame\\GossipGossipIcon" },    }
     f.actionIcons = {}
     for _, a in ipairs(actions) do
         local btn = FlatButton(body, a[2], { tooltip = a[3], tooltipText = a[4] })
@@ -898,6 +958,10 @@ local function CreateWindow(key)
         btn:SetScript("OnClick", a[5])
         f.actionButtons[#f.actionButtons + 1] = btn
         f.actionIcons[#f.actionIcons + 1] = IconButton(f, a[6], a[3], a[4], a[5], a[1])
+        if a[1] == "history" then -- right-click opens the History window
+            btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            f.actionIcons[#f.actionIcons]:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        end
     end
 
     -- Message area inset (placed by LayoutButtons)
@@ -924,6 +988,60 @@ local function CreateWindow(key)
     jump:Hide()
     jump:SetScript("OnClick", function(self) msg:ScrollToBottom(); self:Hide() end)
     f.jump = jump
+
+    -- Search bar (hidden until Search / Ctrl+F; placed by LayoutButtons)
+    local searchBar = CreateFrame("Frame", nil, inset, BACKDROP_TEMPLATE)
+    searchBar:SetHeight(20)
+    Skin(searchBar, "input")
+    searchBar:Hide()
+    f.searchBar = searchBar
+    local sClose = FlatButton(searchBar, "x", { bare = true, width = 18, height = 18,
+        hoverColor = { 0.9, 0.25, 0.25 }, tooltip = "Close search" })
+    sClose:SetPoint("RIGHT", -1, 0)
+    sClose:SetScript("OnClick", function() SetSearch(f, false) end)
+    -- book: the full History window for this person
+    local book = CreateFrame("Button", nil, searchBar)
+    book:SetSize(14, 14)
+    book:SetPoint("RIGHT", sClose, "LEFT", -2, 0)
+    local bt = book:CreateTexture(nil, "ARTWORK")
+    bt:SetAllPoints()
+    bt:SetTexture("Interface\\Icons\\INV_Misc_Book_09") -- same icon as the History window
+    bt:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    bt:SetAlpha(0.8)
+    book:SetScript("OnEnter", function(self)
+        bt:SetAlpha(1)
+        ShowTooltip(self, "Open History", "All saved conversations in the History window.")
+    end)
+    book:SetScript("OnLeave", function() bt:SetAlpha(0.8); GameTooltip:Hide() end)
+    book:SetScript("OnClick", function() ns.ShowHistory(f.key) end)
+    searchBar.count = searchBar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    searchBar.count:SetPoint("RIGHT", book, "LEFT", -6, 0)
+    local sEdit = CreateFrame("EditBox", nil, searchBar)
+    sEdit:SetPoint("TOPLEFT", 6, 0)
+    sEdit:SetPoint("BOTTOMRIGHT", searchBar.count, "BOTTOMLEFT", -6, -3)
+    sEdit:SetFontObject(ChatFontNormal)
+    sEdit:SetAutoFocus(false)
+    searchBar.edit = sEdit
+    local sHint = searchBar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    sHint:SetPoint("LEFT", 7, 0)
+    sHint:SetText("Search this conversation...")
+    sHint:SetTextColor(0.4, 0.4, 0.46)
+    searchBar:EnableMouse(true)
+    searchBar:SetScript("OnMouseDown", function() sEdit:SetFocus() end)
+    sEdit:SetScript("OnTextChanged", function(self)
+        local text = self:GetText()
+        sHint:SetShown(text == "")
+        if searchBar.timer then searchBar.timer:Cancel() end
+        searchBar.timer = C_Timer.NewTimer(0.15, function()
+            searchBar.timer = nil
+            local q = Trim(text):lower()
+            f.searchQuery = q ~= "" and q or nil
+            if not f.searchQuery then searchBar.count:SetText("") end
+            FillMessages(f)
+        end)
+    end)
+    sEdit:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    sEdit:SetScript("OnEscapePressed", function() SetSearch(f, false) end)
 
     msg:EnableMouseWheel(true)
     msg:SetScript("OnMouseWheel", function(self, delta)
@@ -1026,12 +1144,19 @@ local function CreateWindow(key)
     edit:SetScript("OnEnterPressed", function(self)
         local text = self:GetText()
         if text and text:match("%S") then
+            if f.searchBar:IsShown() then SetSearch(f, false) end -- back to the conversation
             SendWhisperTo(f.key, text)
         end
         f.histPos, f.histDraft = nil, nil
         self:SetText("")
     end)
     edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    -- Ctrl+F (Cmd+F on a Mac): search this conversation
+    edit:HookScript("OnKeyDown", function(_, k)
+        if k == "F" and (IsControlKeyDown() or (IsMetaKeyDown and IsMetaKeyDown())) then
+            SetSearch(f, true)
+        end
+    end)
 
     -- Resize grip
     local grip = CreateFrame("Button", nil, body)
@@ -1064,6 +1189,7 @@ local function CreateWindow(key)
     f:HookScript("OnHide", function()
         -- hidden mid-drag: finish the move, or WoW keeps it "moving"
         if movingFrame == f then EndMove() end
+        if ns.ForgetHeld then ns.ForgetHeld(f.key) end -- closed in combat: stays closed
         if ns.UpdateSessionUI then ns.UpdateSessionUI() end
         if ns.replyMenu and ns.replyMenu.owner == f then ns.replyMenu:Hide() end
         if Emoji.picker and Emoji.picker.owner == f then Emoji.picker:Hide() end
@@ -1131,6 +1257,7 @@ end
 ns.CloseTab = function(key)
     local idx = IndexOf(tabOrder, key)
     if idx then tremove(tabOrder, idx) end
+    if ns.ForgetHeld then ns.ForgetHeld(key) end -- closed in combat: stays closed
     local f = windows[key]
     if f then f:Hide() end
     if key == ns.activeKey then
@@ -1143,6 +1270,7 @@ end
 
 local function CloseAllWindows()
     for _, f in pairs(windows) do f:Hide() end
+    if ns.ForgetHeld then ns.ForgetHeld() end -- closed in combat: stays closed
     wipe(tabOrder)
     ns.activeKey = nil
     if ns.RefreshTabs then ns.RefreshTabs() end

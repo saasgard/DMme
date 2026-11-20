@@ -33,6 +33,7 @@ read_globals = {
     "FriendsFrame_InviteOrRequestToJoin", "GetCursorPosition", "GetNormalizedRealmName", "GetNumWhoResults",
     "GetGuildRosterInfo", "GetNumGuildMembers", "GetPlayerInfoByGUID","GetRealmID", "GetRealmName", "GetTime", "GetWhoInfo", "InCombatLockdown",
     "InterfaceOptions_AddCategory", "InviteUnit", "BNet_GetBNetIDAccount", "ChatEdit_DeactivateChat", "ChatEdit_UpdateHeader", "ClearOverrideBindings", "FlashClientIcon", "GetBindingKey", "SetOverrideBinding", "ERR_CHAT_PLAYER_NOT_FOUND_S", "ERR_FRIEND_ONLINE_SS", "ERR_FRIEND_OFFLINE_S", "NUM_CHAT_WINDOWS", "OKAY", "CANCEL", "KeyBindingFrame", "KeyBindingFrame_LoadUI", "ShowUIPanel", "IsControlKeyDown", "IsGuildMember", "IsInGuild",
+    "IsMetaKeyDown", "IsInGroup", "IsInRaid", "GetNumGroupMembers", "GetNumSubgroupMembers", "GetLocale",
     "IsModifierKeyDown", "IsMouseButtonDown", "IsShiftKeyDown", "MouseIsOver", "PlaySound", "SendChatMessage", "SendWho",
     "SetItemRef", "StaticPopup_Show", "UIDropDownMenu_AddButton", "UIDropDownMenu_CreateInfo",
     "UnitClass", "UnitInParty", "UnitInRaid", "UnitIsPlayer", "UnitName", "UnitPopup_ShowMenu",
@@ -42,3 +43,6 @@ read_globals = {
     "RAID_CLASS_COLORS", "SOUNDKIT", "UIDROPDOWNMENU_MENU_LEVEL", "WOW_PROJECT_ID", "BNET_CLIENT_WOW",
     "COPY_CHARACTER_NAME", "FRIEND", "NO", "PARTY", "PLAYER", "RAID_PLAYER", "TARGET", "WHO_LIST_FORMAT", "YES",
 }
+
+-- tests/run.lua runs outside the game and sets up stand-ins for the WoW API
+files["tests/"] = { allow_defined_top = true, globals = { "*" }, ignore = { "11." } }

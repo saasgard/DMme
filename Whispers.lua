@@ -18,8 +18,10 @@ local FormatEntry = ns.FormatEntry
 local FullName = ns.FullName
 local GetWindow = ns.GetWindow
 local GuildInviteName = ns.GuildInviteName
+local InMyGroup = ns.InMyGroup
 local IndexOf = ns.IndexOf
 local IsBN = ns.IsBN
+local IsFriendly = ns.IsFriendly
 local IsSecret = ns.IsSecret
 local KeyInfo = ns.KeyInfo
 local LoadPalette = ns.LoadPalette
@@ -53,25 +55,48 @@ local DEFAULT_SPAM_WORDS = {
     "power leveling", "powerleveling", "boosting service", "boost service",
     "discount code", "coupon code", "best price",
 }
-local spamLog = {}   -- this session's blocked whispers: { t, key, text, word }
+-- Blocked whispers: { t, key, text, word | muted }. Saved (DB.spamLog) for
+-- SPAM_LOG_DAYS so a whisper blocked by mistake can still be found later.
+-- The same table is kept for good: ADDON_LOADED copies the saved entries in.
+local spamLog = {}
 local SPAM_LOG_MAX = 100
+local SPAM_LOG_DAYS = 7
+
+-- Drop blocked whispers older than SPAM_LOG_DAYS (at login).
+local function PruneSpamLog()
+    local cutoff = time() - SPAM_LOG_DAYS * 86400
+    while spamLog[1] and (spamLog[1].t or 0) < cutoff do table.remove(spamLog, 1) end
+end
+
+-- Saved data about people you haven't whispered with for 30 days is
+-- dropped at login (class, /who profile, window position), unless you have
+-- saved history with them, pinned or muted them. Keeps DMmeDB small.
+local STALE_SECS = 30 * 86400
+local function PruneStale()
+    local DB, now = ns.DB, time()
+    local tables = { DB.guids, DB.profiles, DB.positions }
+    -- entries saved before "seen" existed: start their clock now
+    for _, tbl in ipairs(tables) do
+        for k in pairs(tbl) do
+            if not DB.seen[k] then DB.seen[k] = now end
+        end
+    end
+    local removed = 0
+    for k, t in pairs(DB.seen) do
+        if now - t > STALE_SECS and not (DB.log[k] or DB.pinned[k] or DB.mutes[k] or ns.session[k]) then
+            for _, tbl in ipairs(tables) do tbl[k] = nil end
+            DB.seen[k] = nil
+            removed = removed + 1
+        end
+    end
+    return removed
+end
 
 local function IsSpam(key, text, guid, flags)
     if not (ns.DB and ns.DB.spamFilter) or type(text) ~= "string" or not key then return false end
     if IsBN(key) or ns.session[key] then return false end
     if flags == "GM" or flags == "DEV" then return false end
-    if guid then
-        if C_FriendList and C_FriendList.IsFriend then
-            local ok, friend = pcall(C_FriendList.IsFriend, guid)
-            if ok and friend then return false end
-        end
-        if IsGuildMember then
-            local ok, member = pcall(IsGuildMember, guid)
-            if ok and member then return false end
-        end
-    end
-    local short = ShortName(key)
-    if (UnitInParty and UnitInParty(short)) or (UnitInRaid and UnitInRaid(short)) then return false end
+    if IsFriendly(key, guid) or InMyGroup(key) then return false end
     local t = text:lower()
     for _, w in ipairs(ns.DB.spamWords or {}) do
         if w ~= "" and t:find(w, 1, true) then return true, w end
@@ -79,18 +104,18 @@ local function IsSpam(key, text, guid, flags)
     return false
 end
 
-local function RecordSpam(key, text, word)
-    spamLog[#spamLog + 1] = { t = time(), key = key, text = text, word = word }
+local function RecordSpam(key, text, word, muted)
+    spamLog[#spamLog + 1] = { t = time(), key = key, text = text, word = word, muted = muted or nil }
     if #spamLog > SPAM_LOG_MAX then table.remove(spamLog, 1) end
     if ns.settings and ns.settings:IsShown() then ns.settings:Refresh() end
 end
 
 -- Blocked whispers as plain text (Settings > Chat > Show blocked).
 local function SpamLogText()
-    if #spamLog == 0 then return "Nothing blocked this session." end
+    if #spamLog == 0 then return "Nothing blocked in the last " .. SPAM_LOG_DAYS .. " days." end
     local out = {}
     for _, e in ipairs(spamLog) do
-        out[#out + 1] = "[" .. date("%H:%M", e.t) .. "] " .. ShortName(e.key) .. ": " .. e.text
+        out[#out + 1] = "[" .. date("%d %b %H:%M", e.t) .. "] " .. ShortName(e.key) .. ": " .. e.text
             .. (e.muted and "   (muted)" or ("   (matched \"" .. e.word .. "\")"))
     end
     return table.concat(out, "\n")
@@ -380,9 +405,15 @@ end
 ----------------------------------------------------------------------
 -- Conversations whose window was held back during combat: [key] = true
 local heldOpen = {}
+-- You closed the window (or all of them): don't reopen it when combat ends.
+-- key = nil forgets every held window.
+function ns.ForgetHeld(key)
+    if key then heldOpen[key] = nil else wipe(heldOpen) end
+end
 
 local function AddLine(key, text, incoming, guid)
     if incoming and guid then ns.DB.guids[key] = guid end
+    ns.DB.seen[key] = time()
     local entry = { t = time(), i = incoming or nil, m = text, me = (not incoming) and playerName or nil }
     local s = ns.session[key] or {}
     s.t, s.text, s.incoming = entry.t, text, incoming
@@ -394,7 +425,9 @@ local function AddLine(key, text, incoming, guid)
     local f = windows[key]
     local wantOpen = not incoming or ns.DB.autoOpen
     -- in combat: don't pop anything open, open it when combat ends
+    -- (nothing to hold if their window is already on screen)
     local hold = incoming and ns.DB.autoOpen and ns.DB.combatHold and InCombatLockdown and InCombatLockdown()
+        and not (f and f:IsShown())
     if hold then
         heldOpen[key] = true
     elseif ns.DB.tabbed then
@@ -428,8 +461,12 @@ local function AddLine(key, text, incoming, guid)
 
     f.lastActivity = GetTime() -- keeps the window from fading (Settings > General)
     local wasAtBottom = f.msg:AtBottom()
-    ns.DayBreak(f, entry.t) -- divider if this is the first message of a new day
-    f.msg:AddMessage(FormatEntry(key, entry))
+    if f.searchQuery then
+        FillMessages(f) -- searching the window: redo the filtered list
+    else
+        ns.DayBreak(f, entry.t) -- divider if this is the first message of a new day
+        f.msg:AddMessage(FormatEntry(key, entry))
+    end
 
     if incoming then
         if not wasAtBottom then f.jump:Show() end
@@ -466,12 +503,22 @@ local function AddNotice(key, text)
         lines[#lines + 1] = entry
         for _ = 1, #lines - SESSION_LINES do table.remove(lines, 1) end
     end
+    -- saved with the history too ("not delivered", away replies), but not
+    -- came online / went offline: those would fill it up
+    if not (text:find(" came online%.$") or text:find(" went offline%.$")) then
+        LogEntry(key, entry)
+        if ns.hist and ns.hist:IsShown() then ns.hist:Refresh() end
+    end
     if f then
         f.lastActivity = GetTime()
-        local wasAtBottom = f.msg:AtBottom()
-        ns.DayBreak(f, now)
-        f.msg:AddMessage(FormatEntry(key, entry))
-        if wasAtBottom then f.msg:ScrollToBottom() end
+        if f.searchQuery then
+            FillMessages(f) -- searching: redo the filtered list
+        else
+            local wasAtBottom = f.msg:AtBottom()
+            ns.DayBreak(f, now)
+            f.msg:AddMessage(FormatEntry(key, entry))
+            if wasAtBottom then f.msg:ScrollToBottom() end
+        end
     end
 end
 ns.AddNotice = AddNotice
@@ -485,7 +532,7 @@ ns.StoreProfile = function(name, data)
     if not key or not ns.DB then return end
     -- a /who for a Battle.net friend's character: fill in their Battle.net
     -- conversation too (guild, and level/race if Battle.net left them out)
-    local alias = whoAlias[key]
+    local alias = whoAlias[key] and whoAlias[key].key
     if alias then
         whoAlias[key] = nil
         local merged = {}
@@ -619,6 +666,11 @@ events:SetScript("OnEvent", function(self, event, ...)
             ns.DB.spamWords = {}
             for i, w in ipairs(DEFAULT_SPAM_WORDS) do ns.DB.spamWords[i] = w end
         end
+        -- blocked whispers from earlier sessions (see PruneSpamLog)
+        for _, e in ipairs(ns.DB.spamLog) do
+            if type(e) == "table" and e.t and e.key then spamLog[#spamLog + 1] = e end
+        end
+        ns.DB.spamLog = spamLog
         self:UnregisterEvent("ADDON_LOADED")
         return
     elseif event == "PLAYER_ENTERING_WORLD" then
@@ -699,6 +751,8 @@ events:SetScript("OnEvent", function(self, event, ...)
                     tbl[old] = nil
                 end
             end
+            PruneStale()
+            PruneSpamLog()
         end
         return
     end
@@ -721,9 +775,7 @@ events:SetScript("OnEvent", function(self, event, ...)
     if not key then return end
 
     if (event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_BN_WHISPER") and IsMuted(key) then
-        spamLog[#spamLog + 1] = { t = time(), key = key, text = text, muted = true }
-        if #spamLog > SPAM_LOG_MAX then table.remove(spamLog, 1) end
-        if ns.settings and ns.settings:IsShown() then ns.settings:Refresh() end
+        RecordSpam(key, text, nil, true)
         return -- muted: no window, no sound
     end
 
@@ -942,6 +994,8 @@ end
 
 -- shared with the files after this one (see their 'from earlier files')
 ns.spamLog = spamLog
+ns.ParseWhoLine = ParseWhoLine -- (also for tests/run.lua)
+ns.PruneStale = PruneStale
 ns.SpamLogText = SpamLogText
 ns.ShowSpamEditor = ShowSpamEditor
 ns.MUTE_OPTIONS = MUTE_OPTIONS

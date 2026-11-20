@@ -34,6 +34,8 @@ local function GamePattern(fmt)
     return "^" .. p .. "$"
 end
 
+ns.GamePattern = GamePattern -- (for tests/run.lua)
+
 local NOT_FOUND = GamePattern(ERR_CHAT_PLAYER_NOT_FOUND_S)
 local CAME_ONLINE = GamePattern(ERR_FRIEND_ONLINE_SS)
 local WENT_OFFLINE = GamePattern(ERR_FRIEND_OFFLINE_S)

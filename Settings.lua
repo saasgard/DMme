@@ -23,6 +23,7 @@ local HEADER_H = ns.HEADER_H
 local IsGameStyle = ns.IsGameStyle
 local KEEP_OPTIONS = ns.KEEP_OPTIONS
 local KeepOption = ns.KeepOption
+local L = ns.L
 local LayoutButtons = ns.LayoutButtons
 local LoadPalette = ns.LoadPalette
 local MEDIA_GEAR = ns.MEDIA_GEAR
@@ -269,7 +270,7 @@ local function CreateSettings()
         if y < 0 then y = y - 8 end
         local fs = P:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         fs:SetPoint("TOPLEFT", 14, y)
-        fs:SetText(text:upper())
+        fs:SetText(L[text]:upper())
         OnUIAccent(function(r, g, b) fs:SetTextColor(r, g, b) end)
         local l = P:CreateTexture(nil, "ARTWORK")
         l:SetTexture(WHITE)
@@ -313,7 +314,7 @@ local function CreateSettings()
         fs:SetPoint("RIGHT", 0, 0)
         fs:SetJustifyH("LEFT")
         fs:SetWordWrap(false)
-        fs:SetText(label)
+        fs:SetText(L[label])
         b.Refresh = function()
             local on = get() and true or false
             local game = IsGameStyle()
@@ -347,7 +348,7 @@ local function CreateSettings()
         width = width or 150
         local lbl = P:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         lbl:SetPoint("TOPLEFT", 16, y - 4)
-        lbl:SetText(labelText)
+        lbl:SetText(L[labelText])
         local dd = FlatButton(P, "", { width = width, tooltip = labelText, tooltipText = tip })
         dd:SetPoint("TOPRIGHT", -16, y)
         dd.label:ClearAllPoints()
@@ -378,7 +379,7 @@ local function CreateSettings()
             row:SetBackdropColor(0, 0, 0, 0)
             row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             row.text:SetPoint("LEFT", 8, 0)
-            row.text:SetText(o.label)
+            row.text:SetText(L[o.label])
             row:SetScript("OnEnter", function(self) self:SetBackdropColor(1, 1, 1, 0.08) end)
             row:SetScript("OnLeave", function(self) self:SetBackdropColor(0, 0, 0, 0) end)
             row:SetScript("OnClick", function()
@@ -393,7 +394,7 @@ local function CreateSettings()
             local cur = get()
             local text = options[1] and options[1].label or ""
             for _, o in ipairs(options) do if o.id == cur then text = o.label end end
-            dd.label:SetText(text)
+            dd.label:SetText(L[text])
         end
         dd:SetScript("OnClick", function()
             if list:IsShown() then list:Hide(); return end
@@ -415,7 +416,7 @@ local function CreateSettings()
     local function Stepper(labelText, getText, step, tip)
         local lbl = P:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         lbl:SetPoint("TOPLEFT", 16, y - 4)
-        lbl:SetText(labelText)
+        lbl:SetText(L[labelText])
         local plus = FlatButton(P, "+", { width = 22, tooltip = tip and labelText, tooltipText = tip })
         plus:SetPoint("TOPRIGHT", -16, y)
         local value = P:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -450,9 +451,9 @@ local function CreateSettings()
         fs:SetPoint("TOPLEFT", 18, y - 2)
         fs:SetWidth(SETTINGS_W - 36)
         fs:SetJustifyH("LEFT")
-        fs:SetText(sample or text)
+        fs:SetText(L[sample or text])
         local h = fs:GetStringHeight()
-        fs:SetText(text)
+        fs:SetText(L[text])
         y = y - (h + 8)
         return fs
     end
@@ -559,7 +560,7 @@ local function CreateSettings()
     ButtonCheck("guild", "Guild Invite", "Shows the /ginvite command ready to copy and paste.\n(The game blocks addons from sending guild invites.)")
     ButtonCheck("party", "Party Invite")
     ButtonCheck("who", "Who")
-    ButtonCheck("history", "History")
+    ButtonCheck("history", "History and search", "Left-click: search the conversation, including saved history.\nRight-click: open the History window.\n(Ctrl+F in the text box works either way.)")
     ButtonCheck("replies", "Quick replies", "A Replies button with your saved messages.")
     EndPage()
 
@@ -596,14 +597,14 @@ local function CreateSettings()
     Section("Spam filter")
     Check("Block spam whispers", "Drops whispers that contain one of your spam words\n(gold sellers, boosting ads...). Never blocks friends, guild,\nyour group, Battle.net, or people you already talk to.",
         function() return ns.DB.spamFilter end, function(v) ns.DB.spamFilter = v end)
-    local spamInfo = Note("", "00 words  -  000 blocked this session")
+    local spamInfo = Note("", "00 words  -  000 blocked in the last 7 days")
     refreshers[#refreshers + 1] = function()
-        spamInfo:SetText(#(ns.DB.spamWords or {}) .. " words  -  " .. #spamLog .. " blocked this session")
+        spamInfo:SetText(#(ns.DB.spamWords or {}) .. " words  -  " .. #spamLog .. " blocked in the last 7 days")
     end
     Buttons({
         { "Edit words", 100, function() ShowSpamEditor() end },
-        { "Show blocked", 100, function() ShowCopyLog("Blocked whispers (this session)", SpamLogText()) end,
-            { tooltip = "Show blocked", tooltipText = "Whispers the filter blocked this session, and which word matched." } },
+        { "Show blocked", 100, function() ShowCopyLog("Blocked whispers (last 7 days)", SpamLogText()) end,
+            { tooltip = "Show blocked", tooltipText = "Whispers that were blocked or muted in the last 7 days, and why." } },
     })
 
     Section("Muted players")
@@ -634,6 +635,13 @@ local function CreateSettings()
     Section("Saved history")
     Check("Save whisper history", "Saves whispers to disk so you can read them later in the History window. Off by default.",
         function() return ns.DB.logEnabled end, SetLogging)
+    Dropdown("Save whispers with", {
+            { id = "all", label = "Everyone" },
+            { id = "friends", label = "Friends and guild" },
+        },
+        function() return ns.DB.logWho end,
+        function(id) ns.DB.logWho = id end,
+        "Friends and guild: only conversations with friends, guild members,\nBattle.net friends and people you pinned are saved.\nAlready saved history is kept either way.")
     Dropdown("Keep history for", KEEP_OPTIONS,
         function() return ns.DB.logKeep end,
         function(id) if id ~= ns.DB.logKeep then SetLogKeep(id) end end,

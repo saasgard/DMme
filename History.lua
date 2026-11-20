@@ -17,6 +17,8 @@ local HandleLink = ns.HandleLink
 local KeyRGB = ns.KeyRGB
 local OnTheme = ns.OnTheme
 local OnUIAccent = ns.OnUIAccent
+local PlainText = ns.PlainText
+local SearchText = ns.SearchText
 local SetLogging = ns.SetLogging
 local ShortName = ns.ShortName
 local Skin = ns.Skin
@@ -52,18 +54,6 @@ StaticPopupDialogs["DMME_DELETE_LOG"] = {
 ----------------------------------------------------------------------
 -- Copy window: a conversation as plain, selectable text (Ctrl+C)
 ----------------------------------------------------------------------
--- Remove colour codes, textures and link wrappers ("|Hitem:..|h[Sword]|h" -> "[Sword]").
-local function PlainText(s)
-    s = s or ""
-    s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-    s = s:gsub("|HclubTicket:[^|]*|h%[?(.-)%]?|h", "[Community invite: %1]")
-    s = s:gsub("|H.-|h(.-)|h", "%1")
-    s = s:gsub("|T.-|t", ""):gsub("|A.-|a", "")
-    s = s:gsub("|K.-|k", "?")
-    s = s:gsub("||", "|")
-    return s
-end
-
 -- The whole saved conversation with `key` as plain text, grouped by day.
 local function ConversationText(key)
     local log = ns.DB.log[key]
@@ -77,8 +67,12 @@ local function ConversationText(key)
             out[#out + 1] = "--- " .. date("%A, %d %B %Y", e.t) .. " ---"
             lastDay = day
         end
-        local who = e.i and them or (e.me or playerName)
-        out[#out + 1] = "[" .. date("%H:%M", e.t) .. "] " .. who .. ": " .. PlainText(e.m)
+        if e.sys then
+            out[#out + 1] = "[" .. date("%H:%M", e.t) .. "] * " .. PlainText(e.m)
+        else
+            local who = e.i and them or (e.me or playerName)
+            out[#out + 1] = "[" .. date("%H:%M", e.t) .. "] " .. who .. ": " .. PlainText(e.m)
+        end
     end
     return table.concat(out, "\n")
 end
@@ -291,9 +285,16 @@ local function CreateHistory()
     end)
     search:SetScript("OnTextChanged", function(self)
         ph:SetShown(self:GetText() == "" and not self:HasFocus())
-        h.filter = self:GetText():lower()
-        h.offset = 0
-        h:Refresh()
+        -- search a moment after the last key, not on every key: with a lot
+        -- of saved history each search reads every message
+        local q = self:GetText():lower()
+        if h.searchTimer then h.searchTimer:Cancel() end
+        h.searchTimer = C_Timer.NewTimer(0.2, function()
+            h.searchTimer = nil
+            h.filter = q
+            h.offset = 0
+            h:Refresh()
+        end)
     end)
 
     h.rows = {}
@@ -344,8 +345,8 @@ local function CreateHistory()
 
     h.who = right:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     h.who:SetPoint("TOPLEFT", 10, -10)
-    h.who:SetPoint("RIGHT", right, "RIGHT", -290, 0)
     h.who:SetJustifyH("LEFT")
+    h.who:SetWordWrap(false) -- one line, cut off with "..." (right edge: the Copy button, below)
 
     local del = FlatButton(right, "Delete", { hoverColor = { 0.9, 0.25, 0.25 },
         tooltip = "Delete log", tooltipText = "Permanently delete the saved log with this player." })
@@ -371,6 +372,8 @@ local function CreateHistory()
         end
     end)
     h.toolButtons = { del, gi, chat, copy }
+    -- the name stops before the buttons, however wide the theme makes them
+    h.who:SetPoint("RIGHT", copy, "LEFT", -8, 0)
 
     local sep = right:CreateTexture(nil, "ARTWORK")
     sep:SetTexture(WHITE)
@@ -418,7 +421,7 @@ local function CreateHistory()
             local match = q == "" or ShortName(key):lower():find(q, 1, true)
             if not match then
                 for _, e in ipairs(log.entries) do
-                    if e.m:lower():find(q, 1, true) then match = true; break end
+                    if SearchText(e):find(q, 1, true) then match = true; break end
                 end
             end
             if match then self.list[#self.list + 1] = key end
@@ -482,7 +485,7 @@ local function CreateHistory()
                 lastDay = day
             end
             local text = FormatEntry(key, e)
-            if q ~= "" and e.m:lower():find(q, 1, true) then
+            if q ~= "" and not e.sys and SearchText(e):find(q, 1, true) then
                 text = "|cffffd100>|r " .. text   -- mark search hits
             end
             self.view:AddMessage(text)
