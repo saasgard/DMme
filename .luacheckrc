@@ -25,7 +25,7 @@ read_globals = {
     -- Lua helpers WoW adds
     "date", "time", "wipe", "tinsert", "tremove", "hooksecurefunc", "geterrorhandler", "issecretvalue",
     -- namespaces
-    "C_BattleNet", "C_ChatInfo", "C_FriendList", "C_PartyInfo", "C_Timer",
+    "C_BattleNet", "C_ChatInfo", "C_FriendList", "C_PartyInfo", "C_Sound", "C_Timer",
     "ChatFrameUtil", "Menu", "MenuResponse", "MenuUtil", "Settings",
     -- functions
     "Ambiguate", "BNGetNumFriends", "BNInviteFriend", "BNSendWhisper", "CanGuildInvite",

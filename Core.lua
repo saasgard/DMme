@@ -293,6 +293,10 @@ end
 -- API compatibility helpers
 ----------------------------------------------------------------------
 local SendChat = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
+-- 12.0.0 renamed BNSendWhisper, and PlaySound is now C_Sound.PlaySound. The old globals only
+-- survive as Blizzard deprecation shims, so prefer the new names.
+local SendBNWhisper = (C_BattleNet and C_BattleNet.SendWhisper) or BNSendWhisper
+local PlaySoundKit = (C_Sound and C_Sound.PlaySound) or PlaySound
 local AddFilter = (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter) or ChatFrame_AddMessageEventFilter
 
 local function Print(msg)
@@ -445,8 +449,8 @@ end
 local function SendWhisperTo(key, text)
     if IsBN(key) then
         local id = BNResolve(key)
-        if id and BNSendWhisper then
-            BNSendWhisper(id, text)
+        if id and SendBNWhisper then
+            SendBNWhisper(id, text)
         else
             Print(ShortName(key) .. " is not online on Battle.net.")
         end
@@ -886,7 +890,7 @@ local function PlayWhisperSound(force, isBN)
     local name = ns.DB.soundKit
     if isBN and ns.DB.soundKitBN and ns.DB.soundKitBN ~= "SAME" then name = ns.DB.soundKitBN end
     local id = SOUNDKIT[name or ""] or SOUNDKIT.TELL_MESSAGE
-    if id then PlaySound(id) end
+    if id and PlaySoundKit then PlaySoundKit(id) end
 end
 
 -- Battle.net sound choices: "Same as whispers" plus the same list.
