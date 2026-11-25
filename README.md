@@ -10,65 +10,68 @@ Works on **Retail** (12.1.5, plus the 12.1.7 PTR) and **Forever**.
 
 ## What it does
 
-**A window for every conversation**
-Each whisper opens in a clean, compact window. You can have them all in one window with a tab per person, or keep them as separate windows you can move and resize anywhere.
+### A window for every conversation
+Each whisper opens in a clean, compact window. You can have them all in one window with a tab per person, or keep them as separate windows you can move and resize anywhere. With just one conversation open, the tab strip hides itself.
 
-**Battle.net friends included**
+### Search your conversations
+Click the **History** button on a window, or press Ctrl+F in the text box, to search the conversation. It finds messages from this session and from your saved history. Right-click History to open the full History window.
+
+### Battle.net friends included
 Whispers from Battle.net friends show up too, along with the character they're currently playing. Your lines and theirs are easy to tell apart, and Battle.net messages can have their own sound.
 
-**Start a chat from anywhere**
+### Start a chat from anywhere
 Right-click a name in chat, a portrait or a raid frame and pick **Open Whisper Window**. Or open the **Friends** tab in DMme's list and click anyone who's online. On Forever, players' full two-part names are used.
 
-**Pick a look**
+### Pick a look
 Three themes: **Dark**, a clean modern style; **Forever**, which matches the game's own chat and dialog frames; and **Midnight**, a darker take on the game style. You can also change the text size.
 
-**Quick replies**
+### Quick replies
 Save the replies you send all the time ("brb", "inv please", "thanks!") and use them from a button on each window. Click one to put it in the text box, or Shift-click to send it right away. You can reorder them and turn off the Shift safety in settings.
 
-**Emoji and links**
+### Emoji and links
 Type `:)`, `<3` or `:fire:` and they show as emoji, or pick one from the emoji button in the text box. Links in messages are clickable and open a box where you can copy them.
 
-**No pop-ups mid-fight**
-Whispers that arrive during combat wait until the fight is over before their window opens. Nothing is lost: the minimap button still lights up.
+### No pop-ups mid-fight
+Whispers that arrive during combat wait until the fight is over before their window opens. Nothing is lost: the minimap button still lights up, and they still show in your normal chat tabs so you can read them mid-fight (even if you've hidden whispers from the main chat; you can turn that off too).
 
-**Spam filter**
-Gold sellers and boosting ads are caught before they open a window. Friends, guildmates, your group and anyone you're already talking to are never filtered. You can view what was blocked and edit the word list.
+### Spam filter
+Gold sellers and boosting ads are caught before they open a window. Friends, guildmates, your group and anyone you're already talking to are never filtered. You can edit the word list, and see what was blocked or muted in the last 7 days under **Settings → Chat → Show blocked**.
 
-**Mute someone**
+### Mute someone
 Need a break from someone? Right-click their name and choose **Mute whispers** for 1 hour, 24 hours, a week, a month or forever. Their whispers won't open a window, play a sound or show in your main chat, and they can't tell. The mute ends by itself, or you can unmute them early from the same menu or from **Settings → Chat → Show muted**.
 
-**See who you're talking to**
+### See who you're talking to
 Names, messages and tabs use each player's class color. Click **Who** to fill in the window header with their level, race, class and guild. Hover over the name for the full details.
 
-**Never miss a message**
+### Never miss a message
 The minimap button glows and shows how many conversations are waiting for you. Click it for a list of everyone you've talked to this session, with their last message. Middle-click or Shift-click it to mark everything as read. The list stays through `/reload` and clears when you log out.
 
-**A button you can put anywhere**
+### A button you can put anywhere
 Does your minimap addon collect every button into a bag? Turn on the floating DMme button, drag it where you like and resize it with Ctrl + mouse wheel. It's off by default.
 
-**Know what happened to your message**
-If a whisper wasn't delivered because they're offline, you see it right in the conversation. The same goes for their away or busy replies, and for when they come online or go offline.
+### Know what happened to your message
+If a whisper wasn't delivered because they're offline, you see it right in the conversation. The same goes for their away or busy replies, and for when they come online or go offline. These notices are saved with your history too.
 
-**Fast typing**
-Press Up and Down in the text box to bring back messages you sent before, just like the main chat. Turn on **Reply key opens DMme** and your usual Reply key (R) answers the last whisper in DMme. Turn on **Move /w to DMme** and typing `/w name` in the main chat opens their DMme window instead.
+### Fast typing
+Press Up and Down in the text box to bring back messages you sent before, just like the main chat. Turn on **Reply key opens DMme** and your usual Reply key (R) answers the last whisper in DMme. Turn on **Move /w and /r to DMme** and typing `/w name` or `/r` in the main chat opens the DMme window instead. `/dm r hello` replies to whoever whispered you last.
 
-**Pin the people you talk to most**
+### Pin the people you talk to most
 Right-click a name and choose **Pin to top of list**. Pinned people stay at the top of the whisper list and their tabs come first.
 
-**Busy? Let DMme answer**
+### Busy? Let DMme answer
 Turn on the busy auto-reply with your own message ("In a dungeon, back in 20"). Everyone who whispers you gets it once, and it turns itself off when you log in.
 
-**Stays out of the way**
+### Stays out of the way
 Windows can fade to see-through when nothing is happening and come back when you hover or type. When the game is in the background, a new whisper flashes the WoW icon on your taskbar.
 
-**Key bindings**
+### Key bindings
 DMme has its own section under Keybindings: show or hide the windows, reply to the last whisper, open the whisper list, switch tabs, jump to the next unread whisper, close or minimize the current window, mark everything as read, and turn the busy auto-reply on or off. There's a shortcut to it in the settings.
 
-**Keep your conversations (optional)**
-Turn on history to save your whispers between sessions. You can browse, search and copy them later in the History window, and choose how long to keep them: a day, a week, a month, a year or forever. It's off by default.
+### Keep your conversations (optional)
+Turn on history to save your whispers between sessions. You can browse, search and copy them later in the History window, and choose how long to keep them: a day, a week, a month, a year or forever. You can save everyone's whispers, or only those from friends, guild, Battle.net friends and people you pinned. It's off by default.
 
-**Make it yours**
-Settings are split into General, Look, Chat and History tabs. Choose tabs or separate windows (and whether the X closes one tab or all of them), the whisper sound, window size and colors. Pick which quick buttons each window shows: Party Invite, Who, History, Quick replies, plus an optional Guild Invite shortcut. You can also hide whispers from your main chat. On Retail, DMme is also in the addon menu by the minimap.
+### Make it yours
+Settings are split into General, Look, Chat and History tabs. Choose tabs or separate windows (and whether the X closes one tab or all of them), the whisper sound, window size and colors. Pick which quick buttons each window shows: Party Invite, Who, History and search, Quick replies, plus an optional Guild Invite shortcut. You can also hide whispers from your main chat. On Retail, DMme is also in the addon menu by the minimap.
 
 ## Commands
 
@@ -76,6 +79,7 @@ Settings are split into General, Look, Chat and History tabs. Choose tabs or sep
 |---|---|
 | `/dm` | Open settings |
 | `/dm open <name>` | Start a conversation with someone |
+| `/dm r [message]` | Open the conversation with whoever whispered you last, and send the message if you add one |
 | `/dm list` | Show this session's conversations |
 | `/dm read` | Mark all whispers as read |
 | `/dm friends` | Show online friends, click one to chat |
