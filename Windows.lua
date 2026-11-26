@@ -582,20 +582,21 @@ end
 
 local function UpdateTitle(f)
     local name = ShortName(f.key)
-    local classFile, locClass, locRace = KeyInfo(f.key)
+    local classFile, locClass, locRace, level = KeyInfo(f.key)
     local r, g, b = ClassRGB(classFile)
     f.title:SetText(Colorize(name, r, g, b))
 
     local sub = (locRace and locClass) and (locRace .. " " .. locClass) or "Whisper"
     local p = ns.DB.profiles[f.key]
-    if p then
-        -- profile from the last /who: "Level 60 Human Warrior  <Guild>"
+    if p or level then
+        -- "Level 60 Human Warrior  <Guild>": level from the whisper itself
+        -- (12.1.5+) or the last /who, guild only from /who
         local parts = {}
-        if p.level then parts[#parts + 1] = "Level " .. p.level end
+        if level then parts[#parts + 1] = "Level " .. level end
         if locRace then parts[#parts + 1] = locRace end
         if locClass then parts[#parts + 1] = Colorize(locClass, r, g, b) end
         sub = #parts > 0 and table.concat(parts, " ") or sub
-        if p.guild and p.guild ~= "" then sub = sub .. "  |cff40ff40<" .. p.guild .. ">|r" end
+        if p and p.guild and p.guild ~= "" then sub = sub .. "  |cff40ff40<" .. p.guild .. ">|r" end
         -- (zone is shown in the name tooltip; it made the line too long)
     end
     local bn = IsBN(f.key)
@@ -866,7 +867,10 @@ local function CreateWindow(key)
     fi:SetFromAlpha(0)
     fi:SetToAlpha(1)
     fi:SetDuration(0.18)
-    f:SetScript("OnShow", function() fadeIn:Play() end)
+    f:SetScript("OnShow", function()
+        fadeIn:Play()
+        if ns.StartFade then ns.StartFade() end -- idle fade timer runs only while a window is shown
+    end)
 
     ------------------------------------------------------------------
     -- Header
@@ -925,17 +929,17 @@ local function CreateWindow(key)
         local r, g, b = KeyRGB(f.key)
         GameTooltip:SetText(ShortName(f.key), r or 1, g or 1, b or 1)
         local p = ns.DB.profiles[f.key]
-        local _, locClass, locRace = KeyInfo(f.key)
+        local _, locClass, locRace, level = KeyInfo(f.key)
         if p then
-            local line = ((p.level and ("Level " .. p.level .. " ")) or "") .. (locRace or "") .. " " .. (locClass or "")
+            local line = ((level and ("Level " .. level .. " ")) or "") .. (locRace or "") .. " " .. (locClass or "")
             GameTooltip:AddLine(line, 1, 1, 1)
             if p.guild and p.guild ~= "" then GameTooltip:AddLine("<" .. p.guild .. ">", 0.25, 1, 0.25) end
             if p.zone and p.zone ~= "" then GameTooltip:AddLine(p.zone, 0.8, 0.8, 0.8) end
             local ago = math.floor((time() - (p.t or time())) / 60)
             GameTooltip:AddLine("From /who " .. (ago < 1 and "just now" or (ago .. " min ago")), 0.5, 0.5, 0.55)
         elseif locClass then
-            GameTooltip:AddLine((locRace or "") .. " " .. locClass, 1, 1, 1)
-            GameTooltip:AddLine("Click Who for level, guild and zone.", 0.5, 0.5, 0.55)
+            GameTooltip:AddLine(((level and ("Level " .. level .. " ")) or "") .. (locRace or "") .. " " .. locClass, 1, 1, 1)
+            GameTooltip:AddLine(level and "Click Who for guild and zone." or "Click Who for level, guild and zone.", 0.5, 0.5, 0.55)
         end
         GameTooltip:AddLine("Right-click for player options.", 1, 0.82, 0)
         GameTooltip:Show()

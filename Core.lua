@@ -297,6 +297,8 @@ local SendChat = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
 -- survive as Blizzard deprecation shims, so prefer the new names.
 local SendBNWhisper = (C_BattleNet and C_BattleNet.SendWhisper) or BNSendWhisper
 local PlaySoundKit = (C_Sound and C_Sound.PlaySound) or PlaySound
+-- 12.0.7 renamed BNInviteFriend the same way.
+local InviteBNFriend = (C_BattleNet and C_BattleNet.InviteFriend) or BNInviteFriend
 local AddFilter = (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter) or ChatFrame_AddMessageEventFilter
 
 local function Print(msg)
@@ -566,8 +568,8 @@ local function PartyInviteName(name)
             if FriendsFrame_InviteOrRequestToJoin and g.playerGuid then
                 FriendsFrame_InviteOrRequestToJoin(g.playerGuid, g.gameAccountID)
                 return
-            elseif BNInviteFriend then
-                BNInviteFriend(g.gameAccountID)
+            elseif InviteBNFriend then
+                InviteBNFriend(g.gameAccountID)
                 return
             end
         end
@@ -654,11 +656,14 @@ local function WhoName(name)
     SendWhoFor(name)
 end
 
--- Returns classFile, localizedClass, localizedRace for a GUID
+-- Returns classFile, localizedClass, localizedRace, level for a GUID.
+-- Since 12.1.5 the game also returns the level (8th value) when it knows it;
+-- older clients and unknown levels give nil.
 local function GuidInfo(guid)
     if guid and GetPlayerInfoByGUID then
-        local locClass, classFile, locRace = GetPlayerInfoByGUID(guid)
-        return classFile, locClass, locRace
+        local locClass, classFile, locRace, _, _, _, _, level = GetPlayerInfoByGUID(guid)
+        if IsSecret(level) or type(level) ~= "number" or level <= 0 then level = nil end
+        return classFile, locClass, locRace, level
     end
 end
 
@@ -689,17 +694,18 @@ local function ApplyUIAccent()
     for _, fn in ipairs(uiAccentHooks) do fn(r, g, b) end
 end
 
--- classFile, localizedClass, localizedRace for a conversation, from the
--- whisper GUID or, failing that, the last /who result we saw for them.
+-- classFile, localizedClass, localizedRace, level for a conversation, from
+-- the whisper GUID or, failing that, the last /who result we saw for them.
 local function KeyInfo(key)
-    local classFile, locClass, locRace = GuidInfo(ns.DB.guids[key])
+    local classFile, locClass, locRace, level = GuidInfo(ns.DB.guids[key])
     local p = ns.DB.profiles and ns.DB.profiles[key]
     if p then
         classFile = classFile or p.classFile
         locClass = locClass or p.class
         locRace = locRace or p.race
+        level = level or p.level
     end
-    return classFile, locClass, locRace
+    return classFile, locClass, locRace, level
 end
 
 -- true if the player `key` is in your party or raid. Compares whole names

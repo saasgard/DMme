@@ -202,8 +202,10 @@ end
 
 local function FadeTick()
     local now = GetTime()
+    local anyShown = false
     for _, f in pairs(windows) do
         if f:IsShown() then
+            anyShown = true
             if not f.fadeSeen then f.fadeSeen = true; f.lastActivity = now end
             local want = WindowBusy(f, now) and 1 or ns.DB.fadeAlpha
             local a = f:GetAlpha()
@@ -216,12 +218,21 @@ local function FadeTick()
             f.fadeSeen = nil
         end
     end
+    -- nothing on screen: stop until a window opens again (ns.StartFade)
+    if not anyShown and fadeTicker then fadeTicker:Cancel(); fadeTicker = nil end
 end
+
+-- Called when a window is shown; starts the fade timer if it's needed.
+local function StartFade()
+    if fadeTicker or not ns.DB.fadeIdle or not (C_Timer and C_Timer.NewTicker) then return end
+    fadeTicker = C_Timer.NewTicker(0.05, FadeTick)
+end
+ns.StartFade = StartFade
 
 local function ApplyFade()
     if fadeTicker then fadeTicker:Cancel(); fadeTicker = nil end
     if ns.DB.fadeIdle and C_Timer and C_Timer.NewTicker then
-        fadeTicker = C_Timer.NewTicker(0.05, FadeTick)
+        StartFade()
     else
         for _, f in pairs(windows) do f:SetAlpha(1) end
     end
