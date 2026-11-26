@@ -1256,6 +1256,16 @@ local function HandleLink(_, link, text, button)
             .. "If you trust the sender, click here to open it: |cffff8000|H" .. link .. "|h[Community invite]|h|r")
         return
     end
+    -- "[Show Message]" on a hidden ("potentially inappropriate") whisper: the
+    -- game reveals it in its own chat windows; DMme then swaps in the real text
+    if link:find("^censor") then
+        OpenItemRef(link, text, button)
+        if ns.RevealCensored and C_Timer then
+            C_Timer.After(0, ns.RevealCensored)
+            C_Timer.After(0.5, ns.RevealCensored)
+        end
+        return
+    end
     local plain = button == "LeftButton" and not IsModifierKeyDown()
     local name = link:match("^player:([^:]+)")
     if name and plain then

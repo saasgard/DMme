@@ -411,10 +411,13 @@ function ns.ForgetHeld(key)
     if key then heldOpen[key] = nil else wipe(heldOpen) end
 end
 
-local function AddLine(key, text, incoming, guid)
+local function AddLine(key, text, incoming, guid, censoredLine)
     if incoming and guid then ns.DB.guids[key] = guid end
     ns.DB.seen[key] = time()
     local entry = { t = time(), i = incoming or nil, m = text, me = (not incoming) and playerName or nil }
+    -- the game hid this one behind "potentially inappropriate [Show Message]":
+    -- remember its chat line so the real text can replace it (ns.RevealCensored)
+    if censoredLine then entry.cl = censoredLine end
     local s = ns.session[key] or {}
     s.t, s.text, s.incoming = entry.t, text, incoming
     if incoming then ns.lastIncoming = key end -- for the "Reply to last whisper" key binding
@@ -482,6 +485,39 @@ local function AddLine(key, text, incoming, guid)
     end
     if ns.DB.tabbed then ns.RefreshTabs() end
     ns.UpdateSessionUI()
+end
+
+-- "Message from X is potentially inappropriate. [Show Message]": clicking
+-- Show Message makes the game re-draw that line in its own chat windows only,
+-- so a whisper hidden from the main chat would stay hidden. Swap the real
+-- text into every DMme line the game no longer hides, then redraw.
+local function Reveal(e, changed, key)
+    if not e.cl then return end
+    local id = e.cl
+    if C_ChatInfo.IsChatLineCensored(id) then return end
+    local real = C_ChatInfo.GetChatLineText(id)
+    if IsSecret(real) or type(real) ~= "string" or real == "" then return end
+    local s = ns.session[key]
+    if s and s.text == e.m then s.text = real end -- whisper list preview
+    e.m, e.cl = real, nil
+    changed[key] = true
+end
+
+function ns.RevealCensored()
+    if not (ns.DB and C_ChatInfo and C_ChatInfo.IsChatLineCensored and C_ChatInfo.GetChatLineText) then return end
+    local changed = {}
+    for key, s in pairs(ns.session) do
+        for _, e in ipairs(s.lines or {}) do Reveal(e, changed, key) end
+    end
+    -- saved history holds its own copy of the line after a /reload
+    for key, log in pairs(ns.DB.log) do
+        for _, e in ipairs(log.entries or {}) do Reveal(e, changed, key) end
+    end
+    for key in pairs(changed) do
+        local f = windows[key]
+        if f then FillMessages(f) end
+    end
+    if next(changed) and ns.hist and ns.hist:IsShown() then ns.hist:Refresh() end
 end
 
 -- A grey line from the game in a conversation: "not delivered", away/busy
@@ -627,6 +663,7 @@ events:RegisterEvent("CHAT_MSG_SYSTEM")
 events:RegisterEvent("CHAT_MSG_WHISPER")
 events:RegisterEvent("CHAT_MSG_WHISPER_INFORM")
 events:RegisterEvent("PLAYER_REGEN_ENABLED") -- combat ended: open held-back windows
+pcall(events.RegisterEvent, events, "CAUTIONARY_CHAT_MESSAGE") -- a hidden ("inappropriate") line was revealed
 pcall(events.RegisterEvent, events, "CHAT_MSG_BN_WHISPER")
 pcall(events.RegisterEvent, events, "CHAT_MSG_BN_WHISPER_INFORM")
 
@@ -724,6 +761,9 @@ events:SetScript("OnEvent", function(self, event, ...)
     elseif event == "WHO_LIST_UPDATE" then
         ReadWhoResults()
         return
+    elseif event == "CAUTIONARY_CHAT_MESSAGE" then
+        ns.RevealCensored()
+        return
     elseif event == "CHAT_MSG_SYSTEM" then
         local msg = ...
         if ns.DB and not IsSecret(msg) and type(msg) == "string" and msg:find("|Hplayer:", 1, true) then
@@ -785,7 +825,10 @@ events:SetScript("OnEvent", function(self, event, ...)
     end
 
     if event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_BN_WHISPER" then
-        AddLine(key, text, true, guid)
+        local lineID = select(11, ...)
+        local censored = C_ChatInfo and C_ChatInfo.IsChatLineCensored and not IsSecret(lineID)
+            and type(lineID) == "number" and C_ChatInfo.IsChatLineCensored(lineID)
+        AddLine(key, text, true, guid, censored and lineID or nil)
         PlayWhisperSound(false, isBN)
         if ns.OnIncoming then ns.OnIncoming(key) end -- taskbar flash, busy auto-reply (Extras.lua)
         if not ns.DB.logEnabled and not ns.DB.hintShown then
