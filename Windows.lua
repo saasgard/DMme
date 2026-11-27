@@ -15,6 +15,7 @@ local Emoji = ns.Emoji
 local FLAT = ns.FLAT
 local FormatEntry = ns.FormatEntry
 local FullName = ns.FullName
+local Lower = ns.Lower
 local GuildInviteName = ns.GuildInviteName
 local HEADER_H = ns.HEADER_H
 local HandleLink = ns.HandleLink
@@ -1083,7 +1084,7 @@ local function CreateWindow(key)
         if searchBar.timer then searchBar.timer:Cancel() end
         searchBar.timer = C_Timer.NewTimer(0.15, function()
             searchBar.timer = nil
-            local q = Trim(text):lower()
+            local q = Lower(Trim(text))
             f.searchQuery = q ~= "" and q or nil
             if not f.searchQuery then searchBar.count:SetText("") end
             FillMessages(f)

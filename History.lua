@@ -11,6 +11,7 @@ local DayHeader = ns.DayHeader
 local FlatButton = ns.FlatButton
 local FormatEntry = ns.FormatEntry
 local FullName = ns.FullName
+local Lower = ns.Lower
 local GuildInviteName = ns.GuildInviteName
 local HEADER_H = ns.HEADER_H
 local HandleLink = ns.HandleLink
@@ -287,7 +288,7 @@ local function CreateHistory()
         ph:SetShown(self:GetText() == "" and not self:HasFocus())
         -- search a moment after the last key, not on every key: with a lot
         -- of saved history each search reads every message
-        local q = self:GetText():lower()
+        local q = Lower(self:GetText())
         if h.searchTimer then h.searchTimer:Cancel() end
         h.searchTimer = C_Timer.NewTimer(0.2, function()
             h.searchTimer = nil
@@ -418,7 +419,7 @@ local function CreateHistory()
         wipe(self.list)
         local q = self.filter
         for key, log in pairs(ns.DB.log) do
-            local match = q == "" or ShortName(key):lower():find(q, 1, true)
+            local match = q == "" or Lower(ShortName(key)):find(q, 1, true)
             if not match then
                 for _, e in ipairs(log.entries) do
                     if SearchText(e):find(q, 1, true) then match = true; break end

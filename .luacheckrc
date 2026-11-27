@@ -29,7 +29,7 @@ read_globals = {
     "ChatFrameUtil", "Menu", "MenuResponse", "MenuUtil", "Settings",
     -- functions
     "Ambiguate", "BNGetNumFriends", "BNInviteFriend", "BNSendWhisper", "CanGuildInvite",
-    "ChatEdit_InsertLink", "ChatFrame_AddMessageEventFilter", "CreateColor", "CreateFont", "CreateFrame",
+    "ChatEdit_InsertLink", "ChatFrame_AddMessageEventFilter", "CreateColor", "CreateFont", "CreateFontFamily", "CreateFrame",
     "FriendsFrame_InviteOrRequestToJoin", "GetCursorPosition", "GetNormalizedRealmName", "GetNumWhoResults",
     "GetGuildRosterInfo", "GetNumGuildMembers", "GetPlayerInfoByGUID","GetRealmID", "GetRealmName", "GetTime", "GetWhoInfo", "InCombatLockdown",
     "InterfaceOptions_AddCategory", "InviteUnit", "BNet_GetBNetIDAccount", "ChatEdit_DeactivateChat", "ChatEdit_UpdateHeader", "ClearOverrideBindings", "FlashClientIcon", "GetBindingKey", "SetOverrideBinding", "ERR_CHAT_PLAYER_NOT_FOUND_S", "ERR_FRIEND_ONLINE_SS", "ERR_FRIEND_OFFLINE_S", "NUM_CHAT_WINDOWS", "OKAY", "CANCEL", "KeyBindingFrame", "KeyBindingFrame_LoadUI", "ShowUIPanel", "IsControlKeyDown", "IsGuildMember", "IsInGuild",

@@ -16,6 +16,7 @@ local FillMessages = ns.FillMessages
 local FlatButton = ns.FlatButton
 local FormatEntry = ns.FormatEntry
 local FullName = ns.FullName
+local Lower = ns.Lower
 local GetWindow = ns.GetWindow
 local GuildInviteName = ns.GuildInviteName
 local InMyGroup = ns.InMyGroup
@@ -97,7 +98,7 @@ local function IsSpam(key, text, guid, flags)
     if IsBN(key) or ns.session[key] then return false end
     if flags == "GM" or flags == "DEV" then return false end
     if IsFriendly(key, guid) or InMyGroup(key) then return false end
-    local t = text:lower()
+    local t = Lower(text)
     for _, w in ipairs(ns.DB.spamWords or {}) do
         if w ~= "" and t:find(w, 1, true) then return true, w end
     end
@@ -191,7 +192,7 @@ local function UnmuteName(name)
     if not ns.DB.mutes[key] then
         -- typed without a realm: match a muted "Name-Realm" by its first part
         for k in pairs(ns.DB.mutes) do
-            if ShortName(k):lower() == ShortName(key):lower() then key = k; break end
+            if Lower(ShortName(k)) == Lower(ShortName(key)) then key = k; break end
         end
     end
     if ns.DB.mutes[key] then
@@ -279,7 +280,7 @@ local function ShowMutedList()
             for key in pairs(ns.DB.mutes) do
                 if IsMuted(key) then keys[#keys + 1] = key end
             end
-            table.sort(keys, function(a, b) return ShortName(a):lower() < ShortName(b):lower() end)
+            table.sort(keys, function(a, b) return Lower(ShortName(a)) < Lower(ShortName(b)) end)
             self.offset = math.max(0, math.min(self.offset, #keys - ROWS))
             for i, r in ipairs(self.rows) do
                 local key = keys[i + self.offset]
@@ -375,7 +376,7 @@ local function ShowSpamEditor()
         save:SetScript("OnClick", function()
             local list, seen = {}, {}
             for line in (eb:GetText() .. "\n"):gmatch("(.-)\n") do
-                local w = Trim(line):lower()
+                local w = Lower(Trim(line))
                 if w ~= "" and not seen[w] then
                     seen[w] = true
                     list[#list + 1] = w

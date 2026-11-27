@@ -16,6 +16,7 @@ local Emoji = ns.Emoji
 local FLAT = ns.FLAT
 local FlatButton = ns.FlatButton
 local FullName = ns.FullName
+local Lower = ns.Lower
 local IndexOf = ns.IndexOf
 local IsBN = ns.IsBN
 local KeyColorize = ns.KeyColorize
@@ -283,7 +284,7 @@ local function CreateSessionPanel()
                     local key = BNKeyFromID(a.bnetAccountID)
                     local name = a.accountName or (a.battleTag and a.battleTag:match("^[^#]+")) or "?"
                     local e = { key = key, name = name, isBN = true, order = 3,
-                        sortName = (a.battleTag or name):lower() }
+                        sortName = Lower(a.battleTag or name) }
                     if g.clientProgram == "WoW" and g.characterName and g.characterName ~= "" then
                         local classFile = ClassFileFromName(g.className)
                         local cr, cg, cb = ClassRGB(classFile)
@@ -311,7 +312,7 @@ local function CreateSessionPanel()
                     if info.guid and ns.DB.guids then ns.DB.guids[key] = ns.DB.guids[key] or info.guid end
                     local classFile = ClassFileFromName(info.className)
                     local e = { key = key, name = ShortName(key), classFile = classFile, order = 1,
-                        sortName = ShortName(key):lower() }
+                        sortName = Lower(ShortName(key)) }
                     local bits = {}
                     if info.level and info.level > 0 then bits[#bits + 1] = "Level " .. info.level end
                     if info.area and info.area ~= "" then bits[#bits + 1] = info.area end

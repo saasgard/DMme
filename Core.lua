@@ -283,10 +283,47 @@ local function DefaultFontSize()
     local _, size = ChatFontNormal:GetFont()
     return math.floor((size or 14) + 0.5)
 end
+-- ChatFontNormal is a font family: a separate font file per alphabet (Latin,
+-- Cyrillic, Korean, Chinese). Font:SetFont would collapse it to the Latin
+-- file only, turning other alphabets into blank boxes, so a custom size is
+-- applied by building a family with every alphabet scaled to that size.
+local ALPHABETS = { "roman", "korean", "simplifiedchinese", "traditionalchinese", "russian" }
+local sizedFamilies = {}
+local function SizedFamily(want, base)
+    if sizedFamilies[want] then return sizedFamilies[want] end
+    if not (CreateFontFamily and ChatFontNormal.GetFontObjectForAlphabet) then return nil end
+    local members = {}
+    for _, alphabet in ipairs(ALPHABETS) do
+        local obj = ChatFontNormal:GetFontObjectForAlphabet(alphabet)
+        local file, size, flags
+        if obj then file, size, flags = obj:GetFont() end
+        if file then
+            members[#members + 1] = { alphabet = alphabet, file = file,
+                height = (size or base) * want / base, flags = flags or "" }
+        end
+    end
+    if #members == 0 then return nil end
+    local name = "DMmeMessageFont" .. want
+    local ok, family = pcall(CreateFontFamily, name, members)
+    family = (ok and family) or _G[name]
+    sizedFamilies[want] = family
+    return family
+end
+
 local function ApplyFontSize()
     local file, size, flags = ChatFontNormal:GetFont()
     if not file then return end
-    msgFont:SetFont(file, (ns.DB and ns.DB.fontSize) or size, flags or "")
+    local want = ns.DB and ns.DB.fontSize
+    if not want or want == math.floor(size + 0.5) then
+        msgFont:SetFontObject(ChatFontNormal)
+        return
+    end
+    local family = SizedFamily(want, size)
+    if family then
+        msgFont:SetFontObject(family)
+    else -- very old client without font families: Latin-only fallback
+        msgFont:SetFont(file, want, flags or "")
+    end
 end
 
 ----------------------------------------------------------------------
@@ -339,6 +376,30 @@ local function IsBN(key)
     return type(key) == "string" and key:sub(1, 3) == "BN:"
 end
 
+-- UTF-8 aware case mapping. string.lower/upper work byte by byte, so they
+-- miss accented and Cyrillic letters and can even corrupt multi-byte
+-- characters. These map ASCII, Latin-1 accents (À-Þ) and Cyrillic (Ѐ-Я);
+-- everything else (Korean, Chinese, symbols) is left as it is.
+local TO_LOWER, TO_UPPER = {}, {}
+local function CasePair(up, low) TO_LOWER[up] = low; TO_UPPER[low] = up end
+for c = 65, 90 do CasePair(string.char(c), string.char(c + 32)) end
+for b = 0x80, 0x9E do -- À-Þ -> à-þ (skipping × / ÷)
+    if b ~= 0x97 then CasePair("\195" .. string.char(b), "\195" .. string.char(b + 0x20)) end
+end
+for b = 0x80, 0x8F do CasePair("\208" .. string.char(b), "\209" .. string.char(b + 0x10)) end -- Ѐ-Џ
+for b = 0x90, 0x9F do CasePair("\208" .. string.char(b), "\208" .. string.char(b + 0x20)) end -- А-П
+for b = 0xA0, 0xAF do CasePair("\208" .. string.char(b), "\209" .. string.char(b - 0x20)) end -- Р-Я
+
+local function Lower(s)
+    return (s:gsub("[A-Z]", TO_LOWER):gsub("[\195\208][\128-\191]", TO_LOWER))
+end
+
+local function UpperFirst(s)
+    local first = s:match("^[%z\1-\127\192-\255][\128-\191]*")
+    if not first then return s end
+    return (TO_UPPER[first] or first) .. s:sub(#first + 1)
+end
+
 local function ShortName(name)
     if IsBN(name) then return (name:sub(4):gsub("#%d+$", "")) end
     if Ambiguate then return Ambiguate(name, "none") end
@@ -363,7 +424,7 @@ local function FullName(name)
     if name == "" then return nil end
     local base, realm = name:match("^(.-)%-(.+)$")
     if base and base ~= "" and IsOwnRealm(realm) then name = base end
-    return name:sub(1, 1):upper() .. name:sub(2)
+    return UpperFirst(name)
 end
 
 -- Name to use for whisper / invite API calls (keys are already in that form).
@@ -1125,7 +1186,7 @@ local lowerCache = setmetatable({}, { __mode = "k" })
 local function SearchText(e)
     local s = lowerCache[e]
     if not s then
-        s = PlainText(e.m):lower()
+        s = Lower(PlainText(e.m))
         lowerCache[e] = s
     end
     return s
@@ -1331,6 +1392,7 @@ ns.AnySecret = AnySecret
 ns.IsBN = IsBN
 ns.ShortName = ShortName
 ns.FullName = FullName
+ns.Lower = Lower
 ns.BNInfo = BNInfo
 ns.BNKeyFromID = BNKeyFromID
 ns.BNResolve = BNResolve
